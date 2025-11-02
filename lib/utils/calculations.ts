@@ -1,0 +1,144 @@
+import { Invoice, LineItem, InvoiceWithDetails } from '../types/database.types'
+import { addDays, differenceInDays, format } from 'date-fns'
+
+/**
+ * Calculate invoice subtotal from line items
+ */
+export function calculateSubtotal(lineItems: LineItem[]): number {
+  return lineItems.reduce((sum, item) => {
+    return sum + (item.quantity * item.unit_rate)
+  }, 0)
+}
+
+/**
+ * Calculate tax amount to set aside
+ */
+export function calculateTaxSetAside(subtotal: number, taxRate: number): number {
+  return Math.round((subtotal * (taxRate / 100)) * 100) / 100 // Round to 2 decimals
+}
+
+/**
+ * Calculate total (currently same as subtotal, tax shown separately)
+ */
+export function calculateTotal(subtotal: number): number {
+  return subtotal
+}
+
+/**
+ * Calculate due date (invoice date + 30 days)
+ */
+export function calculateDueDate(invoiceDate: string): string {
+  const date = new Date(invoiceDate)
+  const dueDate = addDays(date, 30)
+  return dueDate.toISOString().split('T')[0] // Return YYYY-MM-DD
+}
+
+/**
+ * Calculate days overdue
+ */
+export function calculateDaysOverdue(invoiceDate: string, paid: boolean): number {
+  if (paid) return 0
+
+  const dueDate = new Date(calculateDueDate(invoiceDate))
+  const today = new Date()
+  const days = differenceInDays(today, dueDate)
+
+  return Math.max(0, days) // Never negative
+}
+
+/**
+ * Get overdue status
+ */
+export function getOverdueStatus(invoiceDate: string, paid: boolean): string {
+  if (paid) return 'Paid'
+
+  const daysOverdue = calculateDaysOverdue(invoiceDate, paid)
+
+  if (daysOverdue === 0) return 'Current'
+  if (daysOverdue <= 30) return 'Overdue'
+  if (daysOverdue <= 60) return 'Critical'
+  return 'Severely Overdue'
+}
+
+/**
+ * Get status badge color
+ */
+export function getStatusColor(status: string): string {
+  switch (status) {
+    case 'Paid':
+      return 'green'
+    case 'Current':
+      return 'blue'
+    case 'Overdue':
+      return 'yellow'
+    case 'Critical':
+      return 'orange'
+    case 'Severely Overdue':
+      return 'red'
+    default:
+      return 'gray'
+  }
+}
+
+/**
+ * Enhance invoice with calculated fields
+ */
+export function enhanceInvoice(
+  invoice: Invoice,
+  lineItems: LineItem[]
+): InvoiceWithDetails {
+  const subtotal = calculateSubtotal(lineItems)
+  const tax_set_aside = calculateTaxSetAside(subtotal, invoice.tax_rate)
+  const total = calculateTotal(subtotal)
+  const due_date = calculateDueDate(invoice.date)
+  const days_overdue = calculateDaysOverdue(invoice.date, invoice.paid)
+  const overdue_status = getOverdueStatus(invoice.date, invoice.paid)
+
+  return {
+    ...invoice,
+    line_items: lineItems,
+    receipts: [],
+    subtotal,
+    tax_set_aside,
+    total,
+    due_date,
+    days_overdue,
+    overdue_status,
+  }
+}
+
+/**
+ * Calculate expense total (hardware items only)
+ */
+export function calculateExpenses(lineItems: LineItem[]): number {
+  return lineItems
+    .filter(item => item.item_type === 'HARDWARE')
+    .reduce((sum, item) => sum + (item.quantity * item.unit_rate), 0)
+}
+
+/**
+ * Calculate income total (labor and other items)
+ */
+export function calculateIncome(lineItems: LineItem[]): number {
+  return lineItems
+    .filter(item => item.item_type === 'LABOR' || item.item_type === 'OTHER')
+    .reduce((sum, item) => sum + (item.quantity * item.unit_rate), 0)
+}
+
+/**
+ * Format currency
+ */
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(amount)
+}
+
+/**
+ * Format date for display
+ */
+export function formatDate(dateString: string): string {
+  const date = new Date(dateString)
+  return format(date, 'MMM d, yyyy')
+}
