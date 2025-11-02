@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { createWorker } from 'tesseract.js'
+import Tesseract from 'tesseract.js'
 import type { ReceiptOCRData, ReceiptOCRItem } from '@/lib/types/database.types'
 
 /**
@@ -49,10 +49,18 @@ export async function POST(
 
     const imageBuffer = await imageResponse.arrayBuffer()
 
-    // Run OCR with Tesseract.js
-    const worker = await createWorker('eng')
-    const { data: { text } } = await worker.recognize(Buffer.from(imageBuffer))
-    await worker.terminate()
+    // Run OCR with Tesseract.js (using recognize method which works in serverless)
+    const { data: { text } } = await Tesseract.recognize(
+      Buffer.from(imageBuffer),
+      'eng',
+      {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`)
+          }
+        }
+      }
+    )
 
     // Parse the OCR text to extract structured data
     const ocrData = parseReceiptText(text)
