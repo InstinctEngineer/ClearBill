@@ -72,6 +72,7 @@ export default function InvoicesPage() {
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
       'Paid': 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+      'Waived': 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
       'Current': 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
       'Overdue': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
       'Critical': 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
@@ -80,7 +81,7 @@ export default function InvoicesPage() {
     return colors[status] || 'bg-gray-100 text-gray-800'
   }
 
-  const unpaidInvoices = invoices.filter(inv => !inv.paid)
+  const unpaidInvoices = invoices.filter(inv => !inv.paid && !inv.waived)
   const overdueInvoices = unpaidInvoices.filter(inv => inv.days_overdue > 0)
 
   return (
@@ -254,8 +255,8 @@ export default function InvoicesPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(invoice.overdue_status)}`}>
-                            {invoice.overdue_status}
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(invoice.waived ? 'Waived' : invoice.overdue_status)}`}>
+                            {invoice.waived ? 'Waived' : invoice.overdue_status}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

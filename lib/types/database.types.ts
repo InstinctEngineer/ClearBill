@@ -18,6 +18,7 @@ export interface Database {
           tax_rate: number
           paid: boolean
           paid_date: string | null
+          waived: boolean
           created_at: string
           updated_at: string
         }
@@ -29,6 +30,7 @@ export interface Database {
           tax_rate: number
           paid?: boolean
           paid_date?: string | null
+          waived?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -40,6 +42,7 @@ export interface Database {
           tax_rate?: number
           paid?: boolean
           paid_date?: string | null
+          waived?: boolean
           updated_at?: string
         }
       }

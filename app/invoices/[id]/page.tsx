@@ -88,6 +88,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  const handleToggleWaived = async () => {
+    if (!invoice) return
+
+    try {
+      const res = await fetch(`/api/invoices/${invoice.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ waived: !invoice.waived }),
+      })
+      if (res.ok) {
+        fetchInvoice()
+      }
+    } catch (error) {
+      console.error('Error updating invoice:', error)
+    }
+  }
+
   const handleSaveTitle = async () => {
     if (!invoice || editedTitle === invoice.project_name) {
       setEditingTitle(false)
@@ -362,6 +379,19 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 >
                   <CheckCircle className="h-5 w-5 mr-2" />
                   {invoice.paid ? 'Paid' : 'Mark as Paid'}
+                </button>
+
+                {/* Waive Invoice Button */}
+                <button
+                  onClick={handleToggleWaived}
+                  className={`inline-flex items-center px-6 py-3 rounded-lg font-medium transition-colors ${
+                    invoice.waived
+                      ? 'bg-gray-600 hover:bg-gray-700 text-white'
+                      : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'
+                  }`}
+                >
+                  <X className="h-5 w-5 mr-2" />
+                  {invoice.waived ? 'Waived' : 'Waive Invoice'}
                 </button>
               </div>
             </div>
@@ -711,6 +741,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                       </span>
                     </div>
                   </div>
+
+                  {/* Income Tracking Note */}
+                  {(invoice.waived || !invoice.paid) && (
+                    <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {invoice.waived
+                          ? 'This invoice is waived and will not count toward income or tax calculations.'
+                          : 'This invoice will only count toward income and tax when marked as paid.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

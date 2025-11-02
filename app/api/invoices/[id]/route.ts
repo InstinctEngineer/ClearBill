@@ -103,6 +103,7 @@ export async function PATCH(
         updates.paid_date = null
       }
     }
+    if (body.waived !== undefined) updates.waived = body.waived
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })

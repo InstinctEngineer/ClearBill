@@ -117,14 +117,20 @@ export async function GET(request: Request) {
 
             monthInvoices.forEach(invoice => {
               const items = lineItemsByInvoice[invoice.id] || []
-              const income = calculateIncome(items)
-              const expenses = calculateExpenses(items)
-              const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_rate), 0)
-              const tax = Math.round((subtotal * (invoice.tax_rate / 100)) * 100) / 100
 
-              totalIncome += income
+              // Only count income and tax for PAID, non-WAIVED invoices
+              if (invoice.paid && !invoice.waived) {
+                const income = calculateIncome(items)
+                const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_rate), 0)
+                const tax = Math.round((subtotal * (invoice.tax_rate / 100)) * 100) / 100
+
+                totalIncome += income
+                totalTax += tax
+              }
+
+              // Count expenses for ALL invoices (money was spent regardless)
+              const expenses = calculateExpenses(items)
               totalExpenses += expenses
-              totalTax += tax
             })
 
             const monthNames = [
@@ -151,20 +157,24 @@ export async function GET(request: Request) {
 
         yearInvoices.forEach(invoice => {
           const items = lineItemsByInvoice[invoice.id] || []
-          const income = calculateIncome(items)
-          const expenses = calculateExpenses(items)
           const subtotal = items.reduce((sum, item) => sum + (item.quantity * item.unit_rate), 0)
-          const tax = Math.round((subtotal * (invoice.tax_rate / 100)) * 100) / 100
 
-          yearIncome += income
-          yearExpenses += expenses
-          yearTax += tax
+          // Only count income and tax for PAID, non-WAIVED invoices
+          if (invoice.paid && !invoice.waived) {
+            const income = calculateIncome(items)
+            const tax = Math.round((subtotal * (invoice.tax_rate / 100)) * 100) / 100
 
-          if (invoice.paid) {
+            yearIncome += income
+            yearTax += tax
             paidIncome += subtotal
-          } else {
+          } else if (!invoice.waived) {
+            // Count as unpaid only if not waived
             unpaidIncome += subtotal
           }
+
+          // Count expenses for ALL invoices (money was spent regardless)
+          const expenses = calculateExpenses(items)
+          yearExpenses += expenses
         })
 
         return {
