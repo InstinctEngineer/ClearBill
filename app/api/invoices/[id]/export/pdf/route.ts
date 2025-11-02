@@ -147,7 +147,7 @@ export async function GET(
       doc.setTextColor(59, 130, 246) // Blue color
       doc.setFontSize(9)
       doc.text('Debt Repayment (Discount Applied):', 120, yPos)
-      doc.text(`$${debtDiscount.toFixed(2)}`, 190, yPos, { align: 'right' })
+      doc.text(`-$${debtDiscount.toFixed(2)}`, 190, yPos, { align: 'right' })
       doc.setTextColor(0, 0, 0) // Reset to black
       doc.setFontSize(10)
     }
@@ -155,8 +155,9 @@ export async function GET(
     yPos += 10
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(12)
-    doc.text('Total:', 120, yPos)
-    doc.text(`$${enhancedInvoice.total.toFixed(2)}`, 190, yPos, { align: 'right' })
+    const amountDue = enhancedInvoice.total - debtDiscount
+    doc.text('Amount Due:', 120, yPos)
+    doc.text(`$${amountDue.toFixed(2)}`, 190, yPos, { align: 'right' })
 
     // Payment status
     if (invoice.paid) {

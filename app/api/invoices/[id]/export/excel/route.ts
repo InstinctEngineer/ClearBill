@@ -105,13 +105,14 @@ export async function GET(
     const debtDiscount = calculateDebtDiscount(lineItems as LineItem[] || [])
     let debtRowAdded = false
     if (debtDiscount > 0) {
-      const debtRow = invoiceSheet.addRow(['', '', '', '', '', '', 'Debt Repayment (Discount Applied):', debtDiscount])
+      const debtRow = invoiceSheet.addRow(['', '', '', '', '', '', 'Debt Repayment (Discount Applied):', -debtDiscount])
       debtRow.getCell(7).font = { bold: false, color: { argb: 'FF3B82F6' } } // Blue color
       debtRow.getCell(8).font = { bold: false, color: { argb: 'FF3B82F6' } }
       debtRowAdded = true
     }
 
-    invoiceSheet.addRow(['', '', '', '', '', '', 'Total:', enhancedInvoice.total])
+    const amountDue = enhancedInvoice.total - debtDiscount
+    invoiceSheet.addRow(['', '', '', '', '', '', 'Amount Due:', amountDue])
 
     const totalsStartRow = invoiceSheet.lastRow!.number - (debtRowAdded ? 2 : 1)
     const totalRowCount = debtRowAdded ? 3 : 2
