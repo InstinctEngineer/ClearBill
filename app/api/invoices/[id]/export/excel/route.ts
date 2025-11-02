@@ -54,11 +54,9 @@ export async function GET(
     invoiceSheet.getCell('A1').font = { size: 18, bold: true }
     invoiceSheet.addRow([])
 
-    invoiceSheet.addRow(['Invoice #:', invoice.id])
     invoiceSheet.addRow(['Project:', invoice.project_name])
     invoiceSheet.addRow(['Client:', invoice.client])
     invoiceSheet.addRow(['Invoice Date:', new Date(invoice.date).toLocaleDateString()])
-    invoiceSheet.addRow(['Due Date:', new Date(enhancedInvoice.due_date).toLocaleDateString()])
     invoiceSheet.addRow(['Status:', invoice.paid ? 'PAID' : 'UNPAID'])
     if (invoice.paid && invoice.paid_date) {
       invoiceSheet.addRow(['Paid Date:', new Date(invoice.paid_date).toLocaleDateString()])
@@ -66,7 +64,7 @@ export async function GET(
     invoiceSheet.addRow([])
 
     // Line items header
-    invoiceSheet.addRow(['Description', 'Type', 'Date', 'Quantity', 'Unit Rate', 'Total'])
+    invoiceSheet.addRow(['Description', 'Type', 'Date', 'Qty', 'Regular Rate', 'Discount %', 'Discounted Rate', 'Total', 'Discount Reason'])
     const headerRow = invoiceSheet.lastRow
     if (headerRow) {
       headerRow.font = { bold: true }
@@ -80,13 +78,20 @@ export async function GET(
     // Add line items
     if (lineItems && lineItems.length > 0) {
       for (const item of lineItems) {
+        const discountPercentage = item.discount_percentage || 0
+        const discountedRate = item.unit_rate * (1 - discountPercentage / 100)
+        const total = item.quantity * discountedRate
+
         invoiceSheet.addRow([
           item.description,
           item.item_type,
           new Date(item.date).toLocaleDateString(),
           item.quantity,
           item.unit_rate,
-          item.quantity * item.unit_rate,
+          discountPercentage > 0 ? discountPercentage : '',
+          discountedRate,
+          total,
+          item.discount_reason || '',
         ])
       }
     }
@@ -94,24 +99,26 @@ export async function GET(
     invoiceSheet.addRow([])
 
     // Totals
-    invoiceSheet.addRow(['', '', '', '', 'Subtotal:', enhancedInvoice.subtotal])
-    invoiceSheet.addRow(['', '', '', '', `Tax (${invoice.tax_rate}%):`, enhancedInvoice.tax_set_aside])
-    invoiceSheet.addRow(['', '', '', '', 'Total:', enhancedInvoice.total])
+    invoiceSheet.addRow(['', '', '', '', '', '', 'Subtotal:', enhancedInvoice.subtotal])
+    invoiceSheet.addRow(['', '', '', '', '', '', 'Total:', enhancedInvoice.total])
 
-    const totalsStartRow = invoiceSheet.lastRow!.number - 2
-    for (let i = 0; i < 3; i++) {
+    const totalsStartRow = invoiceSheet.lastRow!.number - 1
+    for (let i = 0; i < 2; i++) {
       const row = invoiceSheet.getRow(totalsStartRow + i)
-      row.getCell(5).font = { bold: true }
-      row.getCell(6).font = { bold: true }
+      row.getCell(7).font = { bold: true }
+      row.getCell(8).font = { bold: true }
     }
 
     // Column widths
-    invoiceSheet.getColumn(1).width = 40
-    invoiceSheet.getColumn(2).width = 12
-    invoiceSheet.getColumn(3).width = 12
-    invoiceSheet.getColumn(4).width = 10
-    invoiceSheet.getColumn(5).width = 12
-    invoiceSheet.getColumn(6).width = 12
+    invoiceSheet.getColumn(1).width = 40  // Description
+    invoiceSheet.getColumn(2).width = 12  // Type
+    invoiceSheet.getColumn(3).width = 12  // Date
+    invoiceSheet.getColumn(4).width = 8   // Qty
+    invoiceSheet.getColumn(5).width = 14  // Regular Rate
+    invoiceSheet.getColumn(6).width = 12  // Discount %
+    invoiceSheet.getColumn(7).width = 15  // Discounted Rate
+    invoiceSheet.getColumn(8).width = 12  // Total
+    invoiceSheet.getColumn(9).width = 30  // Discount Reason
 
     // Tax Information sheet
     const taxSheet = workbook.addWorksheet('Tax Information')

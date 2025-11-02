@@ -53,37 +53,37 @@ export async function GET(
     doc.setFontSize(10)
     doc.setFont('helvetica', 'normal')
     doc.text(`Invoice Date: ${new Date(invoice.date).toLocaleDateString()}`, 20, 35)
-    doc.text(`Due Date: ${new Date(enhancedInvoice.due_date).toLocaleDateString()}`, 20, 42)
-    doc.text(`Invoice #${invoice.id}`, 20, 49)
 
     // Client info
     doc.setFontSize(12)
     doc.setFont('helvetica', 'bold')
-    doc.text('Bill To:', 20, 65)
+    doc.text('Bill To:', 20, 50)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(10)
-    doc.text(invoice.client, 20, 72)
+    doc.text(invoice.client, 20, 57)
 
     // Project name
     doc.setFontSize(14)
     doc.setFont('helvetica', 'bold')
-    doc.text('Project:', 20, 88)
+    doc.text('Project:', 20, 73)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(12)
-    doc.text(invoice.project_name, 20, 95)
+    doc.text(invoice.project_name, 20, 80)
 
     // Line items table
-    let yPos = 115
-    doc.setFontSize(10)
+    let yPos = 100
+    doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
 
     // Table header
     doc.text('Description', 20, yPos)
-    doc.text('Qty', 100, yPos)
-    doc.text('Rate', 125, yPos)
-    doc.text('Amount', 165, yPos, { align: 'right' })
+    doc.text('Qty', 85, yPos)
+    doc.text('Reg. Rate', 100, yPos)
+    doc.text('Disc%', 125, yPos)
+    doc.text('Disc. Rate', 145, yPos)
+    doc.text('Total', 190, yPos, { align: 'right' })
 
-    yPos += 7
+    yPos += 5
     doc.line(20, yPos, 190, yPos) // Horizontal line
     yPos += 7
 
@@ -91,17 +91,31 @@ export async function GET(
     doc.setFont('helvetica', 'normal')
     if (lineItems && lineItems.length > 0) {
       for (const item of lineItems) {
-        const total = item.quantity * item.unit_rate
+        const discountPercentage = item.discount_percentage || 0
+        const discountedRate = item.unit_rate * (1 - discountPercentage / 100)
+        const total = item.quantity * discountedRate
 
         // Description (wrap if too long)
-        const description = item.description.length > 45
-          ? item.description.substring(0, 45) + '...'
+        const description = item.description.length > 30
+          ? item.description.substring(0, 30) + '...'
           : item.description
 
         doc.text(description, 20, yPos)
-        doc.text(item.quantity.toString(), 100, yPos)
-        doc.text(`$${item.unit_rate.toFixed(2)}`, 125, yPos)
+        doc.text(item.quantity.toString(), 85, yPos)
+        doc.text(`$${item.unit_rate.toFixed(2)}`, 100, yPos)
+        doc.text(discountPercentage > 0 ? `${discountPercentage}%` : '-', 125, yPos)
+        doc.text(`$${discountedRate.toFixed(2)}`, 145, yPos)
         doc.text(`$${total.toFixed(2)}`, 190, yPos, { align: 'right' })
+
+        // Add discount reason if present
+        if (item.discount_reason && item.discount_percentage > 0) {
+          yPos += 5
+          doc.setFontSize(8)
+          doc.setTextColor(100, 100, 100)
+          doc.text(`  Discount reason: ${item.discount_reason}`, 20, yPos)
+          doc.setTextColor(0, 0, 0)
+          doc.setFontSize(9)
+        }
 
         yPos += 7
 
@@ -122,12 +136,9 @@ export async function GET(
     yPos += 10
 
     doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
     doc.text('Subtotal:', 120, yPos)
     doc.text(`$${enhancedInvoice.subtotal.toFixed(2)}`, 190, yPos, { align: 'right' })
-
-    yPos += 7
-    doc.text(`Tax Set Aside (${invoice.tax_rate}%):`, 120, yPos)
-    doc.text(`$${enhancedInvoice.tax_set_aside.toFixed(2)}`, 190, yPos, { align: 'right' })
 
     yPos += 10
     doc.setFont('helvetica', 'bold')

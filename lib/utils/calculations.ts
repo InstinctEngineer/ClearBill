@@ -2,11 +2,26 @@ import { Invoice, LineItem, InvoiceWithDetails } from '../types/database.types'
 import { addDays, differenceInDays, format } from 'date-fns'
 
 /**
+ * Calculate discounted rate for a line item
+ */
+export function calculateDiscountedRate(unitRate: number, discountPercentage: number): number {
+  return unitRate * (1 - discountPercentage / 100)
+}
+
+/**
+ * Calculate line item total
+ */
+export function calculateLineItemTotal(item: LineItem): number {
+  const discountedRate = calculateDiscountedRate(item.unit_rate, item.discount_percentage || 0)
+  return item.quantity * discountedRate
+}
+
+/**
  * Calculate invoice subtotal from line items
  */
 export function calculateSubtotal(lineItems: LineItem[]): number {
   return lineItems.reduce((sum, item) => {
-    return sum + (item.quantity * item.unit_rate)
+    return sum + calculateLineItemTotal(item)
   }, 0)
 }
 
@@ -113,7 +128,7 @@ export function enhanceInvoice(
 export function calculateExpenses(lineItems: LineItem[]): number {
   return lineItems
     .filter(item => item.item_type === 'HARDWARE')
-    .reduce((sum, item) => sum + (item.quantity * item.unit_rate), 0)
+    .reduce((sum, item) => sum + calculateLineItemTotal(item), 0)
 }
 
 /**
@@ -122,7 +137,7 @@ export function calculateExpenses(lineItems: LineItem[]): number {
 export function calculateIncome(lineItems: LineItem[]): number {
   return lineItems
     .filter(item => item.item_type === 'LABOR' || item.item_type === 'OTHER')
-    .reduce((sum, item) => sum + (item.quantity * item.unit_rate), 0)
+    .reduce((sum, item) => sum + calculateLineItemTotal(item), 0)
 }
 
 /**

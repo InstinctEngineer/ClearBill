@@ -52,6 +52,8 @@ export interface Database {
           unit_rate: number
           item_type: 'LABOR' | 'HARDWARE' | 'OTHER'
           date: string
+          discount_percentage: number
+          discount_reason: string | null
           created_at: string
         }
         Insert: {
@@ -62,6 +64,8 @@ export interface Database {
           unit_rate: number
           item_type: 'LABOR' | 'HARDWARE' | 'OTHER'
           date: string
+          discount_percentage?: number
+          discount_reason?: string | null
           created_at?: string
         }
         Update: {
@@ -72,6 +76,8 @@ export interface Database {
           unit_rate?: number
           item_type?: 'LABOR' | 'HARDWARE' | 'OTHER'
           date?: string
+          discount_percentage?: number
+          discount_reason?: string | null
         }
       }
       receipts: {

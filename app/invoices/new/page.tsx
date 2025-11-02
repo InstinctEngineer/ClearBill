@@ -31,11 +31,21 @@ export default function NewInvoicePage() {
         const invoice = await res.json()
         router.push(`/invoices/${invoice.id}`)
       } else {
-        alert('Failed to create invoice')
+        console.error('Response status:', res.status)
+        console.error('Response headers:', res.headers)
+        const text = await res.text()
+        console.error('Response text:', text)
+        try {
+          const errorData = JSON.parse(text)
+          console.error('API Error:', errorData)
+          alert(`Failed to create invoice: ${errorData.error || 'Unknown error'}\n${errorData.details || ''}`)
+        } catch {
+          alert(`Failed to create invoice. Status: ${res.status}. Response: ${text}`)
+        }
       }
     } catch (error) {
       console.error('Error creating invoice:', error)
-      alert('An error occurred')
+      alert('An error occurred: ' + (error instanceof Error ? error.message : 'Unknown error'))
     } finally {
       setLoading(false)
     }

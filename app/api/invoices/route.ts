@@ -109,16 +109,23 @@ export async function GET(request: Request) {
  * Create a new invoice
  */
 export async function POST(request: Request) {
+  console.log('=== POST /api/invoices called ===')
   const supabase = await createClient()
 
   // Check authentication
   const { data: { user }, error: authError } = await supabase.auth.getUser()
+  console.log('User:', user?.id, 'Auth error:', authError)
   if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    console.error('Auth error:', authError)
+    return NextResponse.json({
+      error: 'Unauthorized',
+      details: authError?.message || 'No user session found'
+    }, { status: 401 })
   }
 
   try {
     const body = await request.json()
+    console.log('Request body:', body)
     const { project_name, client, date, tax_rate } = body
 
     // Validation
@@ -144,7 +151,11 @@ export async function POST(request: Request) {
 
     if (insertError) {
       console.error('Error creating invoice:', insertError)
-      return NextResponse.json({ error: 'Failed to create invoice' }, { status: 500 })
+      return NextResponse.json({
+        error: 'Failed to create invoice',
+        details: insertError.message,
+        code: insertError.code
+      }, { status: 500 })
     }
 
     // Return enhanced invoice

@@ -18,7 +18,7 @@ import {
   X,
   Download,
 } from 'lucide-react'
-import { formatCurrency, formatDate } from '@/lib/utils/calculations'
+import { formatCurrency, formatDate, calculateDiscountedRate, calculateLineItemTotal } from '@/lib/utils/calculations'
 import type { InvoiceWithDetails, LineItem, Receipt } from '@/lib/types/database.types'
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -37,7 +37,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     unit_rate: '',
     item_type: 'LABOR',
     date: new Date().toISOString().split('T')[0],
+    discount_percentage: '0',
+    discount_reason: '',
   })
+
+  // Line item editing state
+  const [editingLineItem, setEditingLineItem] = useState<number | null>(null)
+  const [editLineItemForm, setEditLineItemForm] = useState<LineItem | null>(null)
 
   // Receipt upload state
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
@@ -118,6 +124,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           unit_rate: '',
           item_type: 'LABOR',
           date: new Date().toISOString().split('T')[0],
+          discount_percentage: '0',
+          discount_reason: '',
         })
         setShowLineItemForm(false)
         fetchInvoice()
@@ -126,6 +134,48 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       }
     } catch (error) {
       console.error('Error adding line item:', error)
+    }
+  }
+
+  const handleEditLineItem = (item: LineItem) => {
+    setEditingLineItem(item.id)
+    setEditLineItemForm(item)
+  }
+
+  const handleSaveLineItem = async () => {
+    if (!editLineItemForm) return
+
+    try {
+      const res = await fetch(`/api/line-items/${editLineItemForm.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editLineItemForm),
+      })
+
+      if (res.ok) {
+        setEditingLineItem(null)
+        setEditLineItemForm(null)
+        fetchInvoice()
+      } else {
+        alert('Failed to update line item')
+      }
+    } catch (error) {
+      console.error('Error updating line item:', error)
+    }
+  }
+
+  const handleDeleteLineItem = async (itemId: number) => {
+    if (!confirm('Are you sure you want to delete this line item?')) return
+
+    try {
+      const res = await fetch(`/api/line-items/${itemId}`, {
+        method: 'DELETE',
+      })
+      if (res.ok) {
+        fetchInvoice()
+      }
+    } catch (error) {
+      console.error('Error deleting line item:', error)
     }
   }
 
@@ -460,6 +510,33 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                           className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Discount (%)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={lineItemForm.discount_percentage}
+                          onChange={(e) => setLineItemForm({ ...lineItemForm, discount_percentage: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Discount Reason
+                        </label>
+                        <input
+                          type="text"
+                          value={lineItemForm.discount_reason}
+                          onChange={(e) => setLineItemForm({ ...lineItemForm, discount_reason: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                          placeholder="e.g., Volume discount, promotional rate"
+                        />
+                      </div>
                     </div>
                     <div className="flex items-center justify-end gap-3 mt-4">
                       <button
@@ -498,41 +575,182 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                             Date
                           </th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Quantity
+                            Qty
                           </th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
                             Rate
                           </th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                            Disc%
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
                             Total
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                            Actions
                           </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        {invoice.line_items.map((item) => (
-                          <tr key={item.id}>
-                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                              {item.description}
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getItemTypeColor(item.item_type)}`}>
-                                {item.item_type}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                              {formatDate(item.date)}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-right text-gray-900 dark:text-white">
-                              {item.quantity}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-right text-gray-900 dark:text-white">
-                              {formatCurrency(item.unit_rate)}
-                            </td>
-                            <td className="px-6 py-4 text-sm text-right font-medium text-gray-900 dark:text-white">
-                              {formatCurrency(item.quantity * item.unit_rate)}
-                            </td>
-                          </tr>
-                        ))}
+                        {invoice.line_items.map((item) => {
+                          const isEditing = editingLineItem === item.id
+                          const discountedRate = calculateDiscountedRate(item.unit_rate, item.discount_percentage || 0)
+
+                          return (
+                            <tr key={item.id} className={isEditing ? 'bg-blue-50 dark:bg-blue-900/10' : ''}>
+                              <td className="px-6 py-4">
+                                {isEditing ? (
+                                  <input
+                                    type="text"
+                                    value={editLineItemForm?.description || ''}
+                                    onChange={(e) => setEditLineItemForm({ ...editLineItemForm!, description: e.target.value })}
+                                    className="w-full px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                  />
+                                ) : (
+                                  <div>
+                                    <div className="text-sm text-gray-900 dark:text-white">{item.description}</div>
+                                    {item.discount_reason && item.discount_percentage > 0 && (
+                                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                        Discount: {item.discount_reason}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-6 py-4">
+                                {isEditing ? (
+                                  <select
+                                    value={editLineItemForm?.item_type || 'LABOR'}
+                                    onChange={(e) => setEditLineItemForm({ ...editLineItemForm!, item_type: e.target.value as 'LABOR' | 'HARDWARE' | 'OTHER' })}
+                                    className="px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                  >
+                                    <option value="LABOR">Labor</option>
+                                    <option value="HARDWARE">Hardware</option>
+                                    <option value="OTHER">Other</option>
+                                  </select>
+                                ) : (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getItemTypeColor(item.item_type)}`}>
+                                    {item.item_type}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-sm">
+                                {isEditing ? (
+                                  <input
+                                    type="date"
+                                    value={editLineItemForm?.date || ''}
+                                    onChange={(e) => setEditLineItemForm({ ...editLineItemForm!, date: e.target.value })}
+                                    className="px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                  />
+                                ) : (
+                                  <span className="text-gray-900 dark:text-white">{formatDate(item.date)}</span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-right">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editLineItemForm?.quantity || 0}
+                                    onChange={(e) => setEditLineItemForm({ ...editLineItemForm!, quantity: parseFloat(e.target.value) })}
+                                    className="w-20 px-2 py-1 text-sm text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                  />
+                                ) : (
+                                  <span className="text-gray-900 dark:text-white">{item.quantity}</span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-right">
+                                {isEditing ? (
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    value={editLineItemForm?.unit_rate || 0}
+                                    onChange={(e) => setEditLineItemForm({ ...editLineItemForm!, unit_rate: parseFloat(e.target.value) })}
+                                    className="w-24 px-2 py-1 text-sm text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                  />
+                                ) : (
+                                  <div>
+                                    <div className="text-gray-900 dark:text-white">{formatCurrency(item.unit_rate)}</div>
+                                    {item.discount_percentage > 0 && (
+                                      <div className="text-xs text-green-600 dark:text-green-400">
+                                        {formatCurrency(discountedRate)}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-right">
+                                {isEditing ? (
+                                  <div className="space-y-1">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      step="0.01"
+                                      value={editLineItemForm?.discount_percentage || 0}
+                                      onChange={(e) => setEditLineItemForm({ ...editLineItemForm!, discount_percentage: parseFloat(e.target.value) })}
+                                      className="w-20 px-2 py-1 text-sm text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                    />
+                                    <input
+                                      type="text"
+                                      placeholder="Reason"
+                                      value={editLineItemForm?.discount_reason || ''}
+                                      onChange={(e) => setEditLineItemForm({ ...editLineItemForm!, discount_reason: e.target.value })}
+                                      className="w-32 px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className={item.discount_percentage > 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-500 dark:text-gray-400'}>
+                                    {item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-6 py-4 text-sm text-right font-medium text-gray-900 dark:text-white">
+                                {formatCurrency(calculateLineItemTotal(item))}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                {isEditing ? (
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={handleSaveLineItem}
+                                      className="p-1 text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300"
+                                      title="Save"
+                                    >
+                                      <Save className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setEditingLineItem(null)
+                                        setEditLineItemForm(null)
+                                      }}
+                                      className="p-1 text-gray-600 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                                      title="Cancel"
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => handleEditLineItem(item)}
+                                      className="p-1 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                                      title="Edit"
+                                    >
+                                      <Edit2 className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteLineItem(item.id)}
+                                      className="p-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   )}
