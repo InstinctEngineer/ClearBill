@@ -96,6 +96,9 @@ export interface Database {
           filename: string
           storage_path: string
           uploaded_at: string
+          ocr_processed: boolean
+          ocr_data: ReceiptOCRData | null
+          ocr_error: string | null
         }
         Insert: {
           id?: number
@@ -103,12 +106,18 @@ export interface Database {
           filename: string
           storage_path: string
           uploaded_at?: string
+          ocr_processed?: boolean
+          ocr_data?: ReceiptOCRData | null
+          ocr_error?: string | null
         }
         Update: {
           id?: number
           invoice_id?: number
           filename?: string
           storage_path?: string
+          ocr_processed?: boolean
+          ocr_data?: ReceiptOCRData | null
+          ocr_error?: string | null
         }
       }
       settings: {
@@ -161,6 +170,22 @@ export type InvoiceUpdate = Database['public']['Tables']['invoices']['Update']
 export type LineItemUpdate = Database['public']['Tables']['line_items']['Update']
 export type ReceiptUpdate = Database['public']['Tables']['receipts']['Update']
 export type SettingUpdate = Database['public']['Tables']['settings']['Update']
+
+// OCR extracted data structure
+export interface ReceiptOCRItem {
+  name: string
+  price: number | null
+}
+
+export interface ReceiptOCRData {
+  merchant?: string
+  date?: string
+  total?: number
+  tax?: number
+  subtotal?: number
+  items: ReceiptOCRItem[]
+  raw_text?: string
+}
 
 // Extended types with relations and computed properties
 export interface InvoiceWithDetails extends Invoice {

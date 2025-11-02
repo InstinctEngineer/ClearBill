@@ -21,6 +21,7 @@ import {
 import { formatCurrency, formatDate, calculateDiscountedRate, calculateLineItemTotal } from '@/lib/utils/calculations'
 import type { InvoiceWithDetails, LineItem, Receipt } from '@/lib/types/database.types'
 import EditLineItemModal from '@/components/EditLineItemModal'
+import ReceiptDetails from '@/components/ReceiptDetails'
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
@@ -234,6 +235,25 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       }
     } catch (error) {
       console.error('Error deleting receipt:', error)
+    }
+  }
+
+  const handleProcessReceiptOCR = async (receiptId: number) => {
+    try {
+      const res = await fetch(`/api/receipts/${receiptId}/ocr`, {
+        method: 'POST',
+      })
+
+      if (res.ok) {
+        // Refresh invoice data to get updated receipt with OCR data
+        fetchInvoice()
+      } else {
+        const error = await res.json()
+        alert(error.error || 'Failed to process receipt')
+      }
+    } catch (error) {
+      console.error('Error processing receipt OCR:', error)
+      alert('Failed to process receipt')
     }
   }
 
@@ -811,7 +831,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     No receipts uploaded yet
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
                     {Object.keys(receiptTree)
                       .sort((a, b) => parseInt(b) - parseInt(a))
                       .map((year) => (
@@ -826,25 +846,13 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                 <h4 className="text-xs text-gray-600 dark:text-gray-400 mb-1">
                                   {new Date(parseInt(year), parseInt(month) - 1).toLocaleString('default', { month: 'long' })}
                                 </h4>
-                                <div className="space-y-1">
+                                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                                   {receiptTree[parseInt(year)][parseInt(month)].map((receipt) => (
-                                    <div
+                                    <ReceiptDetails
                                       key={receipt.id}
-                                      className="flex items-center justify-between p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded"
-                                    >
-                                      <div className="flex items-center flex-1 min-w-0">
-                                        <FileText className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
-                                        <span className="text-sm text-gray-900 dark:text-white truncate">
-                                          {receipt.filename}
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={() => handleDeleteReceipt(receipt.id)}
-                                        className="ml-2 p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    </div>
+                                      receipt={receipt}
+                                      onProcessOCR={handleProcessReceiptOCR}
+                                    />
                                   ))}
                                 </div>
                               </div>
