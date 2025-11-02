@@ -20,7 +20,7 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const { description, quantity, unit_rate, item_type, date, discount_percentage, discount_reason, applies_to_debt } = body
+    const { description, quantity, unit_rate, item_type, date, discount_percentage, discount_reason, applies_to_debt, client_pays } = body
 
     // Build update object
     const updateData: any = {}
@@ -32,6 +32,7 @@ export async function PATCH(
     if (discount_percentage !== undefined) updateData.discount_percentage = parseFloat(discount_percentage)
     if (discount_reason !== undefined) updateData.discount_reason = discount_reason
     if (applies_to_debt !== undefined) updateData.applies_to_debt = applies_to_debt
+    if (client_pays !== undefined) updateData.client_pays = client_pays
 
     // Update line item
     const { data: lineItem, error: updateError } = await supabase

@@ -58,6 +58,7 @@ export interface Database {
           discount_percentage: number
           discount_reason: string | null
           applies_to_debt: boolean
+          client_pays: boolean
           created_at: string
         }
         Insert: {
@@ -71,6 +72,7 @@ export interface Database {
           discount_percentage?: number
           discount_reason?: string | null
           applies_to_debt?: boolean
+          client_pays?: boolean
           created_at?: string
         }
         Update: {
@@ -84,6 +86,7 @@ export interface Database {
           discount_percentage?: number
           discount_reason?: string | null
           applies_to_debt?: boolean
+          client_pays?: boolean
         }
       }
       receipts: {

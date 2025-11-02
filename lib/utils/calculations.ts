@@ -123,20 +123,34 @@ export function enhanceInvoice(
 }
 
 /**
- * Calculate expense total (hardware items only)
+ * Calculate expense total (items where client doesn't pay)
+ * LABOR is never an expense (always income)
+ * HARDWARE/OTHER can be expenses if client_pays is false
  */
 export function calculateExpenses(lineItems: LineItem[]): number {
   return lineItems
-    .filter(item => item.item_type === 'HARDWARE')
+    .filter(item => {
+      // LABOR is never an expense
+      if (item.item_type === 'LABOR') return false
+      // HARDWARE/OTHER are expenses only if client doesn't pay
+      return !item.client_pays
+    })
     .reduce((sum, item) => sum + calculateLineItemTotal(item), 0)
 }
 
 /**
- * Calculate income total (labor and other items)
+ * Calculate income total (items billed to client)
+ * LABOR is always income
+ * HARDWARE/OTHER are income only if client_pays is true
  */
 export function calculateIncome(lineItems: LineItem[]): number {
   return lineItems
-    .filter(item => item.item_type === 'LABOR' || item.item_type === 'OTHER')
+    .filter(item => {
+      // LABOR is always income
+      if (item.item_type === 'LABOR') return true
+      // HARDWARE/OTHER are income only if client pays
+      return item.client_pays
+    })
     .reduce((sum, item) => sum + calculateLineItemTotal(item), 0)
 }
 

@@ -219,6 +219,30 @@ export default function EditLineItemModal({ item, isOpen, onClose, onSave }: Edi
               </label>
             </div>
           )}
+
+          {/* Client Pays Checkbox - only for HARDWARE and OTHER */}
+          {(formData.item_type === 'HARDWARE' || formData.item_type === 'OTHER') && (
+            <div className="mt-4">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.client_pays !== undefined ? formData.client_pays : true}
+                  onChange={(e) => setFormData({ ...formData, client_pays: e.target.checked })}
+                  className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-green-600 focus:ring-2 focus:ring-green-500"
+                />
+                <div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                    Client pays for this item
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {formData.client_pays !== false
+                      ? 'Counted as income (client is billed)'
+                      : 'Counted as expense (you cover the cost)'}
+                  </div>
+                </div>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

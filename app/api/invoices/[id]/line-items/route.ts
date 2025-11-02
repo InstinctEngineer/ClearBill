@@ -20,7 +20,7 @@ export async function POST(
 
   try {
     const body = await request.json()
-    const { description, quantity, unit_rate, item_type, date, discount_percentage, discount_reason, applies_to_debt } = body
+    const { description, quantity, unit_rate, item_type, date, discount_percentage, discount_reason, applies_to_debt, client_pays } = body
 
     // Validation
     if (!description || !quantity || !unit_rate || !item_type || !date) {
@@ -61,6 +61,7 @@ export async function POST(
         discount_percentage: discount_percentage ? parseFloat(discount_percentage) : 0,
         discount_reason: discount_reason || null,
         applies_to_debt: applies_to_debt || false,
+        client_pays: client_pays !== undefined ? client_pays : true,
       })
       .select()
       .single()
