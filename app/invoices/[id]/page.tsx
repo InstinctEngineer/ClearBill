@@ -147,6 +147,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           discount_percentage: '0',
           discount_reason: '',
           applies_to_debt: false,
+          client_pays: true,
         })
         setShowLineItemForm(false)
         fetchInvoice()
