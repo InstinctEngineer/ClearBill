@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Navigation from '@/components/Navigation'
-import { ChevronDown, ChevronRight, FileText, DollarSign, TrendingUp, Calendar } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileText, DollarSign, TrendingUp, Calendar, CheckCircle } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils/calculations'
 
 interface MonthSummary {
@@ -31,6 +31,12 @@ interface SummaryData {
     allTimeIncome: number
     allTimeExpenses: number
     allTimeTax: number
+  }
+  debtTracking?: {
+    totalDebt: number
+    totalRepaid: number
+    remainingDebt: number
+    percentageRepaid: number
   }
 }
 
@@ -180,6 +186,68 @@ export default function SummaryPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Debt Tracking */}
+          {data.debtTracking && data.debtTracking.totalDebt > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-8 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+                  Debt Repayment Tracking
+                </h2>
+                {data.debtTracking.percentageRepaid >= 100 && (
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <CheckCircle className="h-5 w-5" />
+                    <span className="text-sm font-semibold">Fully Repaid!</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <p className="text-sm text-blue-700 dark:text-blue-400 mb-1">Total Debt</p>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-300">
+                    {formatCurrency(data.debtTracking.totalDebt)}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <p className="text-sm text-green-700 dark:text-green-400 mb-1">Repaid via Discounts</p>
+                  <p className="text-2xl font-bold text-green-900 dark:text-green-300">
+                    {formatCurrency(data.debtTracking.totalRepaid)}
+                  </p>
+                </div>
+
+                <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg">
+                  <p className="text-sm text-orange-700 dark:text-orange-400 mb-1">Remaining Balance</p>
+                  <p className="text-2xl font-bold text-orange-900 dark:text-orange-300">
+                    {formatCurrency(Math.max(0, data.debtTracking.remainingDebt))}
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Repayment Progress
+                  </span>
+                  <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                    {Math.min(100, data.debtTracking.percentageRepaid).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${Math.min(100, data.debtTracking.percentageRepaid)}%` }}
+                  />
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                Debt is being repaid through discounted services. Check individual invoices to see which line items apply to debt repayment.
+              </p>
             </div>
           )}
 

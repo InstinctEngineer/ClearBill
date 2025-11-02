@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { calculateExpenses, calculateIncome } from '@/lib/utils/calculations'
+import { calculateExpenses, calculateIncome, calculateDebtDiscount } from '@/lib/utils/calculations'
 import type { Invoice, LineItem } from '@/lib/types/database.types'
 
 interface YearSummary {
@@ -197,6 +197,18 @@ export async function GET(request: Request) {
       }
     })
 
+    // Calculate debt tracking totals
+    const totalDebtRepaid = calculateDebtDiscount(lineItems as LineItem[])
+
+    // Fetch debt total from settings
+    const { data: debtSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'DEBT_TOTAL')
+      .single()
+
+    const debtTotal = debtSetting ? parseFloat(debtSetting.value) : 1000.00
+
     return NextResponse.json({
       years: yearSummaries,
       receipts: receiptTree,
@@ -204,6 +216,12 @@ export async function GET(request: Request) {
         allTimeIncome: yearSummaries.reduce((sum, y) => sum + y.totalIncome, 0),
         allTimeExpenses: yearSummaries.reduce((sum, y) => sum + y.totalExpenses, 0),
         allTimeTax: yearSummaries.reduce((sum, y) => sum + y.totalTax, 0),
+      },
+      debtTracking: {
+        totalDebt: debtTotal,
+        totalRepaid: Math.round(totalDebtRepaid * 100) / 100,
+        remainingDebt: Math.round((debtTotal - totalDebtRepaid) * 100) / 100,
+        percentageRepaid: Math.round((totalDebtRepaid / debtTotal) * 100 * 100) / 100,
       },
     })
 

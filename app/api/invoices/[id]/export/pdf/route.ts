@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import jsPDF from 'jspdf'
-import { enhanceInvoice } from '@/lib/utils/calculations'
+import { enhanceInvoice, calculateDebtDiscount } from '@/lib/utils/calculations'
 import type { Invoice, LineItem } from '@/lib/types/database.types'
 
 /**
@@ -139,6 +139,18 @@ export async function GET(
     doc.setFontSize(10)
     doc.text('Subtotal:', 120, yPos)
     doc.text(`$${enhancedInvoice.subtotal.toFixed(2)}`, 190, yPos, { align: 'right' })
+
+    // Debt discount line (only if there are debt-tracked discounts)
+    const debtDiscount = calculateDebtDiscount(lineItems as LineItem[] || [])
+    if (debtDiscount > 0) {
+      yPos += 8
+      doc.setTextColor(59, 130, 246) // Blue color
+      doc.setFontSize(9)
+      doc.text('Debt Repayment (Discount Applied):', 120, yPos)
+      doc.text(`$${debtDiscount.toFixed(2)}`, 190, yPos, { align: 'right' })
+      doc.setTextColor(0, 0, 0) // Reset to black
+      doc.setFontSize(10)
+    }
 
     yPos += 10
     doc.setFont('helvetica', 'bold')

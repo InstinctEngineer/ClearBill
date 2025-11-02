@@ -157,3 +157,17 @@ export function formatDate(dateString: string): string {
   const date = new Date(dateString)
   return format(date, 'MMM d, yyyy')
 }
+
+/**
+ * Calculate total debt discount from line items
+ */
+export function calculateDebtDiscount(lineItems: LineItem[]): number {
+  return lineItems
+    .filter(item => item.applies_to_debt && (item.discount_percentage || 0) > 0)
+    .reduce((sum, item) => {
+      const originalTotal = item.quantity * item.unit_rate
+      const discountedTotal = calculateLineItemTotal(item)
+      const discountAmount = originalTotal - discountedTotal
+      return sum + discountAmount
+    }, 0)
+}

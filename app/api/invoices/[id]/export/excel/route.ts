@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
-import { enhanceInvoice } from '@/lib/utils/calculations'
+import { enhanceInvoice, calculateDebtDiscount } from '@/lib/utils/calculations'
 import type { Invoice, LineItem } from '@/lib/types/database.types'
 
 /**
@@ -100,13 +100,27 @@ export async function GET(
 
     // Totals
     invoiceSheet.addRow(['', '', '', '', '', '', 'Subtotal:', enhancedInvoice.subtotal])
+
+    // Debt discount line (only if there are debt-tracked discounts)
+    const debtDiscount = calculateDebtDiscount(lineItems as LineItem[] || [])
+    let debtRowAdded = false
+    if (debtDiscount > 0) {
+      const debtRow = invoiceSheet.addRow(['', '', '', '', '', '', 'Debt Repayment (Discount Applied):', debtDiscount])
+      debtRow.getCell(7).font = { bold: false, color: { argb: 'FF3B82F6' } } // Blue color
+      debtRow.getCell(8).font = { bold: false, color: { argb: 'FF3B82F6' } }
+      debtRowAdded = true
+    }
+
     invoiceSheet.addRow(['', '', '', '', '', '', 'Total:', enhancedInvoice.total])
 
-    const totalsStartRow = invoiceSheet.lastRow!.number - 1
-    for (let i = 0; i < 2; i++) {
+    const totalsStartRow = invoiceSheet.lastRow!.number - (debtRowAdded ? 2 : 1)
+    const totalRowCount = debtRowAdded ? 3 : 2
+    for (let i = 0; i < totalRowCount; i++) {
       const row = invoiceSheet.getRow(totalsStartRow + i)
-      row.getCell(7).font = { bold: true }
-      row.getCell(8).font = { bold: true }
+      if (i === 0 || i === totalRowCount - 1) { // Subtotal and Total rows
+        row.getCell(7).font = { bold: true }
+        row.getCell(8).font = { bold: true }
+      }
     }
 
     // Column widths
