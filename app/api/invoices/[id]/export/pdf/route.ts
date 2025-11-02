@@ -41,6 +41,22 @@ export async function GET(
 
     const enhancedInvoice = enhanceInvoice(invoice as Invoice, lineItems as LineItem[] || [])
 
+    // Fetch all line items for debt tracking
+    const { data: allLineItems } = await supabase
+      .from('line_items')
+      .select('*')
+
+    // Fetch debt total from settings
+    const { data: debtSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'DEBT_TOTAL')
+      .single()
+
+    const debtTotal = debtSetting ? parseFloat(debtSetting.value) : 0
+    const totalDebtRepaid = calculateDebtDiscount(allLineItems as LineItem[] || [])
+    const remainingDebt = Math.max(0, debtTotal - totalDebtRepaid)
+
     // Create PDF
     const doc = new jsPDF()
 
@@ -169,6 +185,31 @@ export async function GET(
         doc.setFontSize(10)
         doc.text(`Payment received: ${new Date(invoice.paid_date).toLocaleDateString()}`, 20, yPos + 7)
       }
+    }
+
+    // Debt tracking section (if debt exists)
+    if (debtTotal > 0) {
+      yPos += invoice.paid ? 20 : 15
+      doc.setFontSize(10)
+      doc.setTextColor(0, 0, 0)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Debt Repayment Progress:', 20, yPos)
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      yPos += 7
+      doc.text(`Total Debt: $${debtTotal.toFixed(2)}`, 20, yPos)
+      yPos += 5
+      doc.text(`Repaid to Date: $${totalDebtRepaid.toFixed(2)}`, 20, yPos)
+      yPos += 5
+      doc.setFont('helvetica', 'bold')
+      doc.text(`Remaining Balance: $${remainingDebt.toFixed(2)}`, 20, yPos)
+
+      // Progress percentage
+      const percentageRepaid = debtTotal > 0 ? (totalDebtRepaid / debtTotal) * 100 : 0
+      yPos += 5
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Progress: ${Math.min(100, percentageRepaid).toFixed(1)}%`, 20, yPos)
     }
 
     // Footer

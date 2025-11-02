@@ -41,6 +41,22 @@ export async function GET(
 
     const enhancedInvoice = enhanceInvoice(invoice as Invoice, lineItems as LineItem[] || [])
 
+    // Fetch all line items for debt tracking
+    const { data: allLineItems } = await supabase
+      .from('line_items')
+      .select('*')
+
+    // Fetch debt total from settings
+    const { data: debtSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'DEBT_TOTAL')
+      .single()
+
+    const debtTotal = debtSetting ? parseFloat(debtSetting.value) : 0
+    const totalDebtRepaid = calculateDebtDiscount(allLineItems as LineItem[] || [])
+    const remainingDebt = Math.max(0, debtTotal - totalDebtRepaid)
+
     // Create workbook
     const workbook = new ExcelJS.Workbook()
     workbook.creator = 'ClearBill Invoice Tracker'
@@ -147,6 +163,39 @@ export async function GET(
 
     taxSheet.getColumn(1).width = 20
     taxSheet.getColumn(2).width = 15
+
+    // Debt Tracking sheet (if debt exists)
+    if (debtTotal > 0) {
+      const debtSheet = workbook.addWorksheet('Debt Tracking')
+      debtSheet.addRow(['Debt Repayment Progress'])
+      debtSheet.getCell('A1').font = { size: 14, bold: true }
+      debtSheet.addRow([])
+      debtSheet.addRow(['Total Debt:', debtTotal])
+      debtSheet.addRow(['Repaid to Date:', totalDebtRepaid])
+      debtSheet.addRow(['Remaining Balance:', remainingDebt])
+
+      const percentageRepaid = debtTotal > 0 ? (totalDebtRepaid / debtTotal) * 100 : 0
+      debtSheet.addRow(['Progress:', `${Math.min(100, percentageRepaid).toFixed(1)}%`])
+
+      // Style the sheet
+      debtSheet.getColumn(1).width = 20
+      debtSheet.getColumn(2).width = 15
+
+      // Bold labels
+      debtSheet.getCell('A3').font = { bold: true }
+      debtSheet.getCell('A4').font = { bold: true }
+      debtSheet.getCell('A5').font = { bold: true }
+      debtSheet.getCell('A6').font = { bold: true }
+
+      // Highlight remaining balance
+      const remainingRow = debtSheet.getRow(5)
+      remainingRow.font = { bold: true }
+      remainingRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF3F4F6' },
+      }
+    }
 
     // Generate buffer
     const buffer = await workbook.xlsx.writeBuffer()
