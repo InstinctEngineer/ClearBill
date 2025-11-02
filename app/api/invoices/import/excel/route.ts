@@ -61,7 +61,7 @@ export async function POST(request: Request) {
           return
         }
 
-        if (!['LABOR', 'HARDWARE', 'OTHER'].includes(itemType)) {
+        if (!itemType || !['LABOR', 'HARDWARE', 'OTHER'].includes(itemType)) {
           errors.push(`Row ${rowNumber}: Invalid item_type. Must be LABOR, HARDWARE, or OTHER`)
           return
         }
