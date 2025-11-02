@@ -151,19 +151,26 @@ export async function GET(
     doc.line(100, yPos, 190, yPos)
     yPos += 10
 
+    // Calculate original subtotal (before any discounts)
+    const originalSubtotal = (lineItems as LineItem[] || []).reduce((sum, item) => {
+      return sum + (item.quantity * item.unit_rate)
+    }, 0)
+
+    // Calculate total discount amount (all line item discounts)
+    const totalDiscount = originalSubtotal - enhancedInvoice.subtotal
+
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(10)
     doc.text('Subtotal:', 120, yPos)
-    doc.text(`$${enhancedInvoice.subtotal.toFixed(2)}`, 190, yPos, { align: 'right' })
+    doc.text(`$${originalSubtotal.toFixed(2)}`, 190, yPos, { align: 'right' })
 
-    // Debt discount line (only if there are debt-tracked discounts)
-    const debtDiscount = calculateDebtDiscount(lineItems as LineItem[] || [])
-    if (debtDiscount > 0) {
+    // Show total discount if there are any discounts
+    if (totalDiscount > 0) {
       yPos += 8
-      doc.setTextColor(59, 130, 246) // Blue color
+      doc.setTextColor(220, 38, 38) // Red color for discount
       doc.setFontSize(9)
-      doc.text('Debt Repayment (Discount Applied):', 120, yPos)
-      doc.text(`-$${debtDiscount.toFixed(2)}`, 190, yPos, { align: 'right' })
+      doc.text('Discount Applied:', 120, yPos)
+      doc.text(`-$${totalDiscount.toFixed(2)}`, 190, yPos, { align: 'right' })
       doc.setTextColor(0, 0, 0) // Reset to black
       doc.setFontSize(10)
     }
@@ -171,9 +178,8 @@ export async function GET(
     yPos += 10
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(12)
-    const amountDue = enhancedInvoice.total - debtDiscount
     doc.text('Amount Due:', 120, yPos)
-    doc.text(`$${amountDue.toFixed(2)}`, 190, yPos, { align: 'right' })
+    doc.text(`$${enhancedInvoice.subtotal.toFixed(2)}`, 190, yPos, { align: 'right' })
 
     // Payment status
     if (invoice.paid) {

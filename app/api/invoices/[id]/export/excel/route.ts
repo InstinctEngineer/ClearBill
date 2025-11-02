@@ -114,27 +114,33 @@ export async function GET(
 
     invoiceSheet.addRow([])
 
-    // Totals
-    invoiceSheet.addRow(['', '', '', '', '', '', 'Subtotal:', enhancedInvoice.subtotal])
+    // Calculate original subtotal (before any discounts)
+    const originalSubtotal = (lineItems as LineItem[] || []).reduce((sum, item) => {
+      return sum + (item.quantity * item.unit_rate)
+    }, 0)
 
-    // Debt discount line (only if there are debt-tracked discounts)
-    const debtDiscount = calculateDebtDiscount(lineItems as LineItem[] || [])
-    let debtRowAdded = false
-    if (debtDiscount > 0) {
-      const debtRow = invoiceSheet.addRow(['', '', '', '', '', '', 'Debt Repayment (Discount Applied):', -debtDiscount])
-      debtRow.getCell(7).font = { bold: false, color: { argb: 'FF3B82F6' } } // Blue color
-      debtRow.getCell(8).font = { bold: false, color: { argb: 'FF3B82F6' } }
-      debtRowAdded = true
+    // Calculate total discount amount (all line item discounts)
+    const totalDiscount = originalSubtotal - enhancedInvoice.subtotal
+
+    // Totals
+    invoiceSheet.addRow(['', '', '', '', '', '', 'Subtotal:', originalSubtotal])
+
+    // Discount line (only if there are discounts)
+    let discountRowAdded = false
+    if (totalDiscount > 0) {
+      const discountRow = invoiceSheet.addRow(['', '', '', '', '', '', 'Discount Applied:', -totalDiscount])
+      discountRow.getCell(7).font = { bold: false, color: { argb: 'FFDC2626' } } // Red color
+      discountRow.getCell(8).font = { bold: false, color: { argb: 'FFDC2626' } }
+      discountRowAdded = true
     }
 
-    const amountDue = enhancedInvoice.total - debtDiscount
-    invoiceSheet.addRow(['', '', '', '', '', '', 'Amount Due:', amountDue])
+    invoiceSheet.addRow(['', '', '', '', '', '', 'Amount Due:', enhancedInvoice.subtotal])
 
-    const totalsStartRow = invoiceSheet.lastRow!.number - (debtRowAdded ? 2 : 1)
-    const totalRowCount = debtRowAdded ? 3 : 2
+    const totalsStartRow = invoiceSheet.lastRow!.number - (discountRowAdded ? 2 : 1)
+    const totalRowCount = discountRowAdded ? 3 : 2
     for (let i = 0; i < totalRowCount; i++) {
       const row = invoiceSheet.getRow(totalsStartRow + i)
-      if (i === 0 || i === totalRowCount - 1) { // Subtotal and Total rows
+      if (i === 0 || i === totalRowCount - 1) { // Subtotal and Amount Due rows
         row.getCell(7).font = { bold: true }
         row.getCell(8).font = { bold: true }
       }
