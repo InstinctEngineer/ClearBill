@@ -2,11 +2,54 @@
 
 import { useState, useCallback } from 'react'
 import { createWorker } from 'tesseract.js'
+import * as pdfjsLib from 'pdfjs-dist'
 import type { ReceiptOCRData, ReceiptOCRItem } from '@/lib/types/database.types'
+
+// Set PDF.js worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+}
 
 interface OCRProgress {
   status: string
   progress: number
+}
+
+/**
+ * Convert PDF first page to image blob
+ */
+async function pdfToImage(pdfBlob: Blob): Promise<Blob> {
+  const arrayBuffer = await pdfBlob.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  const page = await pdf.getPage(1) // Get first page
+
+  const viewport = page.getViewport({ scale: 2.0 }) // Higher scale for better OCR
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+
+  if (!context) {
+    throw new Error('Failed to get canvas context')
+  }
+
+  canvas.width = viewport.width
+  canvas.height = viewport.height
+
+  await page.render({
+    canvasContext: context,
+    viewport: viewport,
+    canvas: canvas
+  }).promise
+
+  // Convert canvas to blob
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob)
+      } else {
+        reject(new Error('Failed to convert canvas to blob'))
+      }
+    }, 'image/png')
+  })
 }
 
 export function useReceiptOCR() {
@@ -17,22 +60,32 @@ export function useReceiptOCR() {
   const processReceipt = useCallback(async (imageUrl: string, receiptId: number): Promise<ReceiptOCRData | null> => {
     setProcessing(true)
     setError(null)
-    setProgress({ status: 'Downloading receipt image...', progress: 0 })
+    setProgress({ status: 'Downloading receipt...', progress: 0 })
 
     try {
-      // Fetch image and convert to Blob to avoid CORS issues
-      setProgress({ status: 'Downloading receipt image...', progress: 5 })
-      const imageResponse = await fetch(imageUrl)
+      // Fetch file and convert to Blob to avoid CORS issues
+      setProgress({ status: 'Downloading receipt...', progress: 5 })
+      const fileResponse = await fetch(imageUrl)
 
-      if (!imageResponse.ok) {
-        throw new Error(`Failed to fetch image: ${imageResponse.statusText}`)
+      if (!fileResponse.ok) {
+        throw new Error(`Failed to fetch file: ${fileResponse.statusText}`)
       }
 
-      const imageBlob = await imageResponse.blob()
+      const fileBlob = await fileResponse.blob()
 
-      // Validate image type
-      if (!imageBlob.type.startsWith('image/')) {
-        throw new Error('Invalid file type. Please upload an image file.')
+      // Determine file type and convert to image if needed
+      let imageBlob: Blob
+
+      if (fileBlob.type === 'application/pdf') {
+        // Handle PDF files
+        setProgress({ status: 'Converting PDF to image...', progress: 8 })
+        imageBlob = await pdfToImage(fileBlob)
+      } else if (fileBlob.type.startsWith('image/')) {
+        // Handle image files directly
+        imageBlob = fileBlob
+      } else {
+        // Unsupported file type
+        throw new Error(`Unsupported file type: ${fileBlob.type}. Please upload an image or PDF file.`)
       }
 
       setProgress({ status: 'Initializing OCR...', progress: 10 })
