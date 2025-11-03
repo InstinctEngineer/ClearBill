@@ -813,7 +813,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     No receipts uploaded yet
                   </div>
                 ) : (
-                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                  <div className="space-y-4">
                     {Object.keys(receiptTree)
                       .sort((a, b) => parseInt(b) - parseInt(a))
                       .map((year) => (

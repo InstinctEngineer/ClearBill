@@ -143,11 +143,11 @@ export default function ReceiptDetails({ receipt, onRefresh, onDelete }: Receipt
           {(receipt.ocr_error || ocrError) && (
             <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
               <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-              <div>
+              <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-red-900 dark:text-red-300">
                   Processing Failed
                 </div>
-                <div className="text-xs text-red-700 dark:text-red-400 mt-1">
+                <div className="text-xs text-red-700 dark:text-red-400 mt-1 break-words">
                   {receipt.ocr_error || ocrError}
                 </div>
               </div>
