@@ -17,33 +17,50 @@ export function useReceiptOCR() {
   const processReceipt = useCallback(async (imageUrl: string, receiptId: number): Promise<ReceiptOCRData | null> => {
     setProcessing(true)
     setError(null)
-    setProgress({ status: 'Initializing OCR...', progress: 0 })
+    setProgress({ status: 'Downloading receipt image...', progress: 0 })
 
     try {
+      // Fetch image and convert to Blob to avoid CORS issues
+      setProgress({ status: 'Downloading receipt image...', progress: 5 })
+      const imageResponse = await fetch(imageUrl)
+
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to fetch image: ${imageResponse.statusText}`)
+      }
+
+      const imageBlob = await imageResponse.blob()
+
+      // Validate image type
+      if (!imageBlob.type.startsWith('image/')) {
+        throw new Error('Invalid file type. Please upload an image file.')
+      }
+
+      setProgress({ status: 'Initializing OCR...', progress: 10 })
+
       // Create Tesseract worker
       const worker = await createWorker('eng', 1, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
             setProgress({
               status: 'Reading receipt...',
-              progress: Math.round(m.progress * 100)
+              progress: 20 + Math.round(m.progress * 70) // 20-90%
             })
           } else if (m.status === 'loading tesseract core') {
             setProgress({
               status: 'Loading OCR engine...',
-              progress: Math.round(m.progress * 50)
+              progress: 10 + Math.round(m.progress * 10) // 10-20%
             })
           } else if (m.status === 'initializing tesseract') {
             setProgress({
               status: 'Starting OCR...',
-              progress: 50 + Math.round(m.progress * 20)
+              progress: 15 + Math.round(m.progress * 5) // 15-20%
             })
           }
         }
       })
 
-      // Recognize text from image
-      const { data: { text } } = await worker.recognize(imageUrl)
+      // Recognize text from image blob (fixes CORS issue)
+      const { data: { text } } = await worker.recognize(imageBlob)
       await worker.terminate()
 
       setProgress({ status: 'Parsing receipt data...', progress: 95 })
