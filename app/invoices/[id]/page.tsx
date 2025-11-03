@@ -834,6 +834,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                       key={receipt.id}
                                       receipt={receipt}
                                       onRefresh={fetchInvoice}
+                                      onDelete={handleDeleteReceipt}
                                     />
                                   ))}
                                 </div>

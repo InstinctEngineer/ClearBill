@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Store, Calendar, DollarSign, Receipt as ReceiptIcon, AlertCircle, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Store, Calendar, DollarSign, Receipt as ReceiptIcon, AlertCircle, Loader2, Trash2 } from 'lucide-react'
 import type { Receipt, ReceiptOCRData } from '@/lib/types/database.types'
 import { formatCurrency } from '@/lib/utils/calculations'
 import { useReceiptOCR } from '@/lib/hooks/useReceiptOCR'
@@ -10,9 +10,10 @@ import { createClient } from '@/lib/supabase/client'
 interface ReceiptDetailsProps {
   receipt: Receipt
   onRefresh?: () => Promise<void>
+  onDelete?: (receiptId: number) => Promise<void>
 }
 
-export default function ReceiptDetails({ receipt, onRefresh }: ReceiptDetailsProps) {
+export default function ReceiptDetails({ receipt, onRefresh, onDelete }: ReceiptDetailsProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const { processing, progress, error: ocrError, processReceipt } = useReceiptOCR()
 
@@ -39,6 +40,13 @@ export default function ReceiptDetails({ receipt, onRefresh }: ReceiptDetailsPro
       }
     } catch (err) {
       console.error('Error processing receipt:', err)
+    }
+  }
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent expanding/collapsing when clicking delete
+    if (onDelete) {
+      await onDelete(receipt.id)
     }
   }
 
@@ -82,6 +90,15 @@ export default function ReceiptDetails({ receipt, onRefresh }: ReceiptDetailsPro
             <div className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs rounded">
               Not Processed
             </div>
+          )}
+          {onDelete && (
+            <button
+              onClick={handleDelete}
+              className="p-1 text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20 rounded transition-colors"
+              title="Delete receipt"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           )}
         </div>
       </button>
