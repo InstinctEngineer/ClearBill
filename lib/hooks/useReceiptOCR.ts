@@ -1,14 +1,9 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { createWorker } from 'tesseract.js'
-import * as pdfjsLib from 'pdfjs-dist'
-import type { ReceiptOCRData, ReceiptOCRItem } from '@/lib/types/database.types'
-
-// Set PDF.js worker - use npm package version
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
-}
+import type { ReceiptOCRData } from '@/lib/types/database.types'
+import { pdfToImages } from '@/lib/pdf/pdfToImages'
+import { OCRImages } from '@/lib/pdf/OCRImages'
 
 interface OCRProgress {
   status: string
@@ -16,39 +11,14 @@ interface OCRProgress {
 }
 
 /**
- * Convert PDF first page to image blob
+ * Convert Blob to data URL
  */
-async function pdfToImage(pdfBlob: Blob): Promise<Blob> {
-  const arrayBuffer = await pdfBlob.arrayBuffer()
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-  const page = await pdf.getPage(1) // Get first page
-
-  const viewport = page.getViewport({ scale: 2.0 }) // Higher scale for better OCR
-  const canvas = document.createElement('canvas')
-  const context = canvas.getContext('2d')
-
-  if (!context) {
-    throw new Error('Failed to get canvas context')
-  }
-
-  canvas.width = viewport.width
-  canvas.height = viewport.height
-
-  await page.render({
-    canvasContext: context,
-    viewport: viewport,
-    canvas: canvas
-  }).promise
-
-  // Convert canvas to blob
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) {
-        resolve(blob)
-      } else {
-        reject(new Error('Failed to convert canvas to blob'))
-      }
-    }, 'image/png')
+async function blobToDataURL(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
   })
 }
 
@@ -73,53 +43,55 @@ export function useReceiptOCR() {
 
       const fileBlob = await fileResponse.blob()
 
-      // Determine file type and convert to image if needed
-      let imageBlob: Blob
+      // Determine file type and get image data URLs
+      let imageDataUrls: string[]
 
       if (fileBlob.type === 'application/pdf') {
-        // Handle PDF files
-        setProgress({ status: 'Converting PDF to image...', progress: 8 })
-        imageBlob = await pdfToImage(fileBlob)
+        // Handle PDF files - convert all pages to images
+        setProgress({ status: 'Converting PDF to images...', progress: 10 })
+
+        const pdfDataUrl = await blobToDataURL(fileBlob)
+        imageDataUrls = await pdfToImages(pdfDataUrl, {
+          scale: 2.0, // Higher scale for better OCR
+          onProgress: ({ current, total }) => {
+            const percentComplete = 10 + Math.round((current / total) * 20) // 10-30%
+            setProgress({
+              status: `Converting page ${current} of ${total}...`,
+              progress: percentComplete
+            })
+          }
+        })
       } else if (fileBlob.type.startsWith('image/')) {
         // Handle image files directly
-        imageBlob = fileBlob
+        setProgress({ status: 'Processing image...', progress: 10 })
+        const imageDataUrl = await blobToDataURL(fileBlob)
+        imageDataUrls = [imageDataUrl]
       } else {
         // Unsupported file type
         throw new Error(`Unsupported file type: ${fileBlob.type}. Please upload an image or PDF file.`)
       }
 
-      setProgress({ status: 'Initializing OCR...', progress: 10 })
+      setProgress({ status: 'Performing OCR...', progress: 30 })
 
-      // Create Tesseract worker
-      const worker = await createWorker('eng', 1, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            setProgress({
-              status: 'Reading receipt...',
-              progress: 20 + Math.round(m.progress * 70) // 20-90%
-            })
-          } else if (m.status === 'loading tesseract core') {
-            setProgress({
-              status: 'Loading OCR engine...',
-              progress: 10 + Math.round(m.progress * 10) // 10-20%
-            })
-          } else if (m.status === 'initializing tesseract') {
-            setProgress({
-              status: 'Starting OCR...',
-              progress: 15 + Math.round(m.progress * 5) // 15-20%
-            })
-          }
+      // Perform OCR on all images
+      const ocrResults = await OCRImages(imageDataUrls, {
+        language: 'eng',
+        onProgress: ({ current, total }) => {
+          const percentComplete = 30 + Math.round((current / total) * 60) // 30-90%
+          setProgress({
+            status: `Reading ${imageDataUrls.length > 1 ? `page ${current} of ${total}` : 'receipt'}...`,
+            progress: percentComplete
+          })
         }
       })
 
-      // Recognize text from image blob (fixes CORS issue)
-      const { data: { text } } = await worker.recognize(imageBlob)
-      await worker.terminate()
+      // Combine all page text
+      const combinedText = Object.values(ocrResults).join('\n\n')
 
       setProgress({ status: 'Parsing receipt data...', progress: 95 })
 
       // Parse the OCR text
-      const ocrData = parseReceiptText(text)
+      const ocrData = parseReceiptText(combinedText)
 
       setProgress({ status: 'Saving results...', progress: 98 })
 
