@@ -5,9 +5,9 @@ import { createWorker } from 'tesseract.js'
 import * as pdfjsLib from 'pdfjs-dist'
 import type { ReceiptOCRData, ReceiptOCRItem } from '@/lib/types/database.types'
 
-// Set PDF.js worker
+// Set PDF.js worker - use npm package version
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
 }
 
 interface OCRProgress {
