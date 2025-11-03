@@ -4,23 +4,41 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight, Store, Calendar, DollarSign, Receipt as ReceiptIcon, AlertCircle, Loader2 } from 'lucide-react'
 import type { Receipt, ReceiptOCRData } from '@/lib/types/database.types'
 import { formatCurrency } from '@/lib/utils/calculations'
+import { useReceiptOCR } from '@/lib/hooks/useReceiptOCR'
+import { createClient } from '@/lib/supabase/client'
 
 interface ReceiptDetailsProps {
   receipt: Receipt
-  onProcessOCR?: (receiptId: number) => Promise<void>
+  onRefresh?: () => Promise<void>
 }
 
-export default function ReceiptDetails({ receipt, onProcessOCR }: ReceiptDetailsProps) {
+export default function ReceiptDetails({ receipt, onRefresh }: ReceiptDetailsProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [processing, setProcessing] = useState(false)
+  const { processing, progress, error: ocrError, processReceipt } = useReceiptOCR()
 
   const handleProcessOCR = async () => {
-    if (!onProcessOCR) return
-    setProcessing(true)
     try {
-      await onProcessOCR(receipt.id)
-    } finally {
-      setProcessing(false)
+      // Get signed URL for the receipt image
+      const supabase = createClient()
+      const { data: urlData, error: urlError } = await supabase
+        .storage
+        .from('receipts')
+        .createSignedUrl(receipt.storage_path, 3600) // 1 hour expiry
+
+      if (urlError || !urlData?.signedUrl) {
+        console.error('Failed to get receipt URL:', urlError)
+        return
+      }
+
+      // Process the receipt
+      await processReceipt(urlData.signedUrl, receipt.id)
+
+      // Refresh the receipt data to show results
+      if (onRefresh) {
+        await onRefresh()
+      }
+    } catch (err) {
+      console.error('Error processing receipt:', err)
     }
   }
 
@@ -72,25 +90,37 @@ export default function ReceiptDetails({ receipt, onProcessOCR }: ReceiptDetails
       {isExpanded && (
         <div className="p-4 pt-0 space-y-3">
           {/* Process OCR Button */}
-          {!receipt.ocr_processed && onProcessOCR && (
-            <button
-              onClick={handleProcessOCR}
-              disabled={processing}
-              className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
-            >
-              {processing ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                'Extract Receipt Data'
+          {!receipt.ocr_processed && (
+            <div className="space-y-2">
+              <button
+                onClick={handleProcessOCR}
+                disabled={processing}
+                className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {progress.status}
+                  </>
+                ) : (
+                  'Extract Receipt Data'
+                )}
+              </button>
+
+              {/* Progress Bar */}
+              {processing && progress.progress > 0 && (
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-blue-600 h-full transition-all duration-300"
+                    style={{ width: `${progress.progress}%` }}
+                  />
+                </div>
               )}
-            </button>
+            </div>
           )}
 
           {/* Error Message */}
-          {receipt.ocr_error && (
+          {(receipt.ocr_error || ocrError) && (
             <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
               <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
               <div>
@@ -98,7 +128,7 @@ export default function ReceiptDetails({ receipt, onProcessOCR }: ReceiptDetails
                   Processing Failed
                 </div>
                 <div className="text-xs text-red-700 dark:text-red-400 mt-1">
-                  {receipt.ocr_error}
+                  {receipt.ocr_error || ocrError}
                 </div>
               </div>
             </div>

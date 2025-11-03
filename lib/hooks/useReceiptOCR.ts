@@ -1,111 +1,104 @@
-import { createClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
-import Tesseract from 'tesseract.js'
+'use client'
+
+import { useState, useCallback } from 'react'
+import { createWorker } from 'tesseract.js'
 import type { ReceiptOCRData, ReceiptOCRItem } from '@/lib/types/database.types'
 
-/**
- * POST /api/receipts/[id]/ocr
- * Process receipt OCR using Tesseract.js
- */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const supabase = await createClient()
-  const { id: receiptId } = await params
+interface OCRProgress {
+  status: string
+  progress: number
+}
 
-  // Check authentication
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+export function useReceiptOCR() {
+  const [processing, setProcessing] = useState(false)
+  const [progress, setProgress] = useState<OCRProgress>({ status: 'idle', progress: 0 })
+  const [error, setError] = useState<string | null>(null)
 
-  try {
-    // Fetch receipt
-    const { data: receipt, error: receiptError } = await supabase
-      .from('receipts')
-      .select('*')
-      .eq('id', receiptId)
-      .single()
+  const processReceipt = useCallback(async (imageUrl: string, receiptId: number): Promise<ReceiptOCRData | null> => {
+    setProcessing(true)
+    setError(null)
+    setProgress({ status: 'Initializing OCR...', progress: 0 })
 
-    if (receiptError || !receipt) {
-      return NextResponse.json({ error: 'Receipt not found' }, { status: 404 })
-    }
-
-    // Get signed URL for the receipt image
-    const { data: signedUrl } = await supabase.storage
-      .from('receipts')
-      .createSignedUrl(receipt.storage_path, 600) // 10 minutes
-
-    if (!signedUrl) {
-      return NextResponse.json({ error: 'Failed to access receipt file' }, { status: 500 })
-    }
-
-    // Download the image
-    const imageResponse = await fetch(signedUrl.signedUrl)
-    if (!imageResponse.ok) {
-      return NextResponse.json({ error: 'Failed to download receipt' }, { status: 500 })
-    }
-
-    const imageBuffer = await imageResponse.arrayBuffer()
-
-    // Run OCR with Tesseract.js (using recognize method which works in serverless)
-    const { data: { text } } = await Tesseract.recognize(
-      Buffer.from(imageBuffer),
-      'eng',
-      {
+    try {
+      // Create Tesseract worker
+      const worker = await createWorker('eng', 1, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
-            console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`)
+            setProgress({
+              status: 'Reading receipt...',
+              progress: Math.round(m.progress * 100)
+            })
+          } else if (m.status === 'loading tesseract core') {
+            setProgress({
+              status: 'Loading OCR engine...',
+              progress: Math.round(m.progress * 50)
+            })
+          } else if (m.status === 'initializing tesseract') {
+            setProgress({
+              status: 'Starting OCR...',
+              progress: 50 + Math.round(m.progress * 20)
+            })
           }
         }
+      })
+
+      // Recognize text from image
+      const { data: { text } } = await worker.recognize(imageUrl)
+      await worker.terminate()
+
+      setProgress({ status: 'Parsing receipt data...', progress: 95 })
+
+      // Parse the OCR text
+      const ocrData = parseReceiptText(text)
+
+      setProgress({ status: 'Saving results...', progress: 98 })
+
+      // Save OCR data to database
+      const response = await fetch(`/api/receipts/${receiptId}/ocr-data`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ocrData })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save OCR data')
       }
-    )
 
-    // Parse the OCR text to extract structured data
-    const ocrData = parseReceiptText(text)
+      setProgress({ status: 'Complete!', progress: 100 })
+      setProcessing(false)
 
-    // Update receipt with OCR data
-    const { error: updateError } = await supabase
-      .from('receipts')
-      .update({
-        ocr_processed: true,
-        ocr_data: ocrData,
-        ocr_error: null,
+      return ocrData
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'OCR processing failed'
+      setError(errorMessage)
+      setProcessing(false)
+      setProgress({ status: 'idle', progress: 0 })
+
+      // Save error to database
+      await fetch(`/api/receipts/${receiptId}/ocr-data`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: errorMessage })
+      }).catch(() => {
+        // Ignore save error
       })
-      .eq('id', receiptId)
 
-    if (updateError) {
-      console.error('Error updating receipt with OCR data:', updateError)
-      return NextResponse.json({ error: 'Failed to save OCR data' }, { status: 500 })
+      return null
     }
+  }, [])
 
-    return NextResponse.json({
-      success: true,
-      data: ocrData
-    })
-
-  } catch (error) {
-    console.error('OCR processing error:', error)
-
-    // Save error to database
-    await supabase
-      .from('receipts')
-      .update({
-        ocr_processed: true,
-        ocr_error: error instanceof Error ? error.message : 'Unknown error',
-      })
-      .eq('id', receiptId)
-
-    return NextResponse.json({
-      error: 'OCR processing failed',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+  return {
+    processing,
+    progress,
+    error,
+    processReceipt
   }
 }
 
 /**
  * Parse OCR text to extract structured receipt data
+ * Same parsing logic as server-side version
  */
 function parseReceiptText(text: string): ReceiptOCRData {
   const lines = text.split('\n').map(line => line.trim()).filter(line => line)

@@ -238,24 +238,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
-  const handleProcessReceiptOCR = async (receiptId: number) => {
-    try {
-      const res = await fetch(`/api/receipts/${receiptId}/ocr`, {
-        method: 'POST',
-      })
-
-      if (res.ok) {
-        // Refresh invoice data to get updated receipt with OCR data
-        fetchInvoice()
-      } else {
-        const error = await res.json()
-        alert(error.error || 'Failed to process receipt')
-      }
-    } catch (error) {
-      console.error('Error processing receipt OCR:', error)
-      alert('Failed to process receipt')
-    }
-  }
 
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
@@ -851,7 +833,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                     <ReceiptDetails
                                       key={receipt.id}
                                       receipt={receipt}
-                                      onProcessOCR={handleProcessReceiptOCR}
+                                      onRefresh={fetchInvoice}
                                     />
                                   ))}
                                 </div>
