@@ -52,7 +52,7 @@ export function useReceiptOCR() {
 
         const pdfDataUrl = await blobToDataURL(fileBlob)
         imageDataUrls = await pdfToImages(pdfDataUrl, {
-          scale: 2.0, // Higher scale for better OCR
+          scale: 4.0, // Very high scale (4x) for maximum OCR accuracy
           onProgress: ({ current, total }) => {
             const percentComplete = 10 + Math.round((current / total) * 20) // 10-30%
             setProgress({

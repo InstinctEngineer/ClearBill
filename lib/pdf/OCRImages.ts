@@ -1,4 +1,4 @@
-import Tesseract from 'tesseract.js';
+import { createWorker, PSM, OEM } from 'tesseract.js';
 
 export type OCRImagesOptions = {
   onProgress?: (progress: { current: number; total: number }) => void;
@@ -7,7 +7,7 @@ export type OCRImagesOptions = {
 };
 
 /**
- * Perform OCR on array of image URLs using Tesseract.js
+ * Perform OCR on array of image URLs using Tesseract.js v6.x
  * Processes all images in parallel for better performance
  *
  * @param urls - Array of image URLs (data URLs or HTTP URLs)
@@ -33,14 +33,31 @@ export async function OCRImages(
   const progress = { total: urls.length, current: 0 };
   const language = options?.language || 'eng';
 
-  // Process all images in parallel
+  // Process all images in parallel using modern worker API
   const promises = urls.map(async (url) => {
-    const result = await Tesseract.recognize(url, language);
+    // Create worker for this image
+    const worker = await createWorker(language);
 
-    progress.current += 1;
-    options?.onProgress?.(progress);
+    try {
+      // Configure Tesseract for better receipt OCR
+      // PSM.SINGLE_BLOCK = Assume a single uniform block of text (best for receipts)
+      // OEM.LSTM_ONLY = LSTM neural net mode (best accuracy)
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SINGLE_BLOCK,  // Single uniform block of text
+        tessedit_ocr_engine_mode: OEM.LSTM_ONLY, // LSTM only
+      });
 
-    return result.data.text;
+      // Perform OCR
+      const { data: { text } } = await worker.recognize(url);
+
+      progress.current += 1;
+      options?.onProgress?.(progress);
+
+      return text;
+    } finally {
+      // Always terminate worker to free memory
+      await worker.terminate();
+    }
   });
 
   const texts = await Promise.all(promises);

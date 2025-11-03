@@ -27,7 +27,7 @@
     "react-dom": "19.2.0",
     "react-hook-form": "^7.66.0",
     "tailwind-merge": "^3.3.1",
-    "tesseract.js": "2.1.5",
+    "tesseract.js": "6.0.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {
