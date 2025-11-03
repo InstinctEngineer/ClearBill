@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Store, Calendar, DollarSign, Receipt as ReceiptIcon, AlertCircle, Loader2, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Store, Calendar, DollarSign, Receipt as ReceiptIcon, AlertCircle, Loader2, Trash2, CheckCircle2, XCircle, Clock } from 'lucide-react'
 import type { Receipt, ReceiptOCRData } from '@/lib/types/database.types'
 import { formatCurrency } from '@/lib/utils/calculations'
 import { useReceiptOCR } from '@/lib/hooks/useReceiptOCR'
@@ -55,40 +55,43 @@ export default function ReceiptDetails({ receipt, onRefresh, onDelete }: Receipt
   return (
     <div className="border-b border-gray-200 dark:border-gray-700 last:border-b-0">
       {/* Header - Always Visible */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
+      <div className="flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+        {/* Left side - Expandable button with filename */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+        >
           {isExpanded ? (
-            <ChevronDown className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            <ChevronDown className="h-4 w-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            <ChevronRight className="h-4 w-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
           )}
-          <ReceiptIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <ReceiptIcon className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
           <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
             {receipt.filename}
           </span>
-        </div>
+        </button>
 
-        {/* Status Indicator */}
-        <div className="flex items-center gap-2">
+        {/* Right side - Status icons and delete button */}
+        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
           {processing && (
-            <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin" />
+            <div title="Processing...">
+              <Loader2 className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-spin" />
+            </div>
           )}
           {receipt.ocr_processed && !receipt.ocr_error && (
-            <div className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 text-xs rounded">
-              Processed
+            <div title="Processed">
+              <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
             </div>
           )}
           {receipt.ocr_error && (
-            <div className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 text-xs rounded">
-              Error
+            <div title="Error">
+              <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
             </div>
           )}
-          {!receipt.ocr_processed && (
-            <div className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs rounded">
-              Not Processed
+          {!receipt.ocr_processed && !processing && (
+            <div title="Not processed">
+              <Clock className="h-4 w-4 text-gray-400 dark:text-gray-500" />
             </div>
           )}
           {onDelete && (
@@ -101,7 +104,7 @@ export default function ReceiptDetails({ receipt, onRefresh, onDelete }: Receipt
             </button>
           )}
         </div>
-      </button>
+      </div>
 
       {/* Expandable Content */}
       {isExpanded && (
