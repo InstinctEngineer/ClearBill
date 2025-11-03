@@ -300,7 +300,7 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
       <div className="flex-1 md:pl-64">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-6 sm:mb-8">
             <Link
               href="/"
               className="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4"
@@ -309,20 +309,21 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               Back to Invoices
             </Link>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            {/* Title Section */}
+            <div className="mb-4">
+              <div className="flex items-center gap-2 sm:gap-4">
                 {editingTitle ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-1">
                     <input
                       type="text"
                       value={editedTitle}
                       onChange={(e) => setEditedTitle(e.target.value)}
-                      className="text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-blue-600 focus:outline-none"
+                      className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white bg-transparent border-b-2 border-blue-600 focus:outline-none flex-1 min-w-0"
                       autoFocus
                     />
                     <button
                       onClick={handleSaveTitle}
-                      className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg"
+                      className="p-2 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg touch-manipulation"
                     >
                       <Save className="h-5 w-5" />
                     </button>
@@ -331,73 +332,74 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         setEditedTitle(invoice.project_name)
                         setEditingTitle(false)
                       }}
-                      className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
+                      className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg touch-manipulation"
                     >
                       <X className="h-5 w-5" />
                     </button>
                   </div>
                 ) : (
                   <>
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white flex-1 min-w-0 break-words">
                       {invoice.project_name}
                     </h1>
                     <button
                       onClick={() => setEditingTitle(true)}
-                      className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                      className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-manipulation flex-shrink-0"
                     >
                       <Edit2 className="h-5 w-5" />
                     </button>
                   </>
                 )}
               </div>
+            </div>
 
-              <div className="flex items-center gap-3">
-                {/* Export Buttons */}
-                <a
-                  href={`/api/invoices/${invoice.id}/export/pdf`}
-                  download
-                  className="inline-flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors"
-                  title="Export as PDF"
-                >
-                  <Download className="h-5 w-5 mr-2" />
-                  PDF
-                </a>
-                <a
-                  href={`/api/invoices/${invoice.id}/export/excel`}
-                  download
-                  className="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
-                  title="Export as Excel"
-                >
-                  <Download className="h-5 w-5 mr-2" />
-                  Excel
-                </a>
+            {/* Action Buttons - Responsive Grid */}
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3">
+              {/* Export Buttons */}
+              <a
+                href={`/api/invoices/${invoice.id}/export/pdf`}
+                download
+                className="inline-flex items-center justify-center px-3 sm:px-4 py-2.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors touch-manipulation"
+                title="Export as PDF"
+              >
+                <Download className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">PDF</span>
+              </a>
+              <a
+                href={`/api/invoices/${invoice.id}/export/excel`}
+                download
+                className="inline-flex items-center justify-center px-3 sm:px-4 py-2.5 sm:py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors touch-manipulation"
+                title="Export as Excel"
+              >
+                <Download className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Excel</span>
+              </a>
 
-                {/* Mark as Paid Button */}
-                <button
-                  onClick={handleTogglePaid}
-                  className={`inline-flex items-center px-6 py-3 rounded-lg font-medium transition-colors ${
-                    invoice.paid
-                      ? 'bg-green-600 hover:bg-green-700 text-white'
-                      : 'bg-orange-600 hover:bg-orange-700 text-white'
-                  }`}
-                >
-                  <CheckCircle className="h-5 w-5 mr-2" />
-                  {invoice.paid ? 'Paid' : 'Mark as Paid'}
-                </button>
+              {/* Mark as Paid Button */}
+              <button
+                onClick={handleTogglePaid}
+                className={`col-span-2 sm:col-span-1 inline-flex items-center justify-center px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg text-sm font-medium transition-colors touch-manipulation ${
+                  invoice.paid
+                    ? 'bg-green-600 hover:bg-green-700 text-white'
+                    : 'bg-orange-600 hover:bg-orange-700 text-white'
+                }`}
+              >
+                <CheckCircle className="h-5 w-5 mr-2" />
+                {invoice.paid ? 'Paid' : 'Mark as Paid'}
+              </button>
 
-                {/* Waive Invoice Button */}
-                <button
-                  onClick={handleToggleWaived}
-                  className={`inline-flex items-center px-6 py-3 rounded-lg font-medium transition-colors ${
-                    invoice.waived
-                      ? 'bg-gray-600 hover:bg-gray-700 text-white'
-                      : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'
-                  }`}
-                >
-                  <X className="h-5 w-5 mr-2" />
-                  {invoice.waived ? 'Waived' : 'Waive Invoice'}
-                </button>
-              </div>
+              {/* Waive Invoice Button */}
+              <button
+                onClick={handleToggleWaived}
+                className={`col-span-2 sm:col-span-1 inline-flex items-center justify-center px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg text-sm font-medium transition-colors touch-manipulation ${
+                  invoice.waived
+                    ? 'bg-gray-600 hover:bg-gray-700 text-white'
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'
+                }`}
+              >
+                <X className="h-5 w-5 mr-2" />
+                {invoice.waived ? 'Waived' : 'Waive Invoice'}
+              </button>
             </div>
           </div>
 
@@ -405,11 +407,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             {/* Invoice Info */}
             <div className="lg:col-span-2 space-y-6">
               {/* Invoice Details Card */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-4">
                   Invoice Details
                 </h2>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Client</p>
                     <p className="text-lg font-medium text-gray-900 dark:text-white">
@@ -453,23 +455,23 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
               {/* Line Items */}
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
-                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
                       Line Items
                     </h2>
                     <button
                       onClick={() => setShowLineItemForm(!showLineItemForm)}
-                      className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                      className="inline-flex items-center px-3 sm:px-4 py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors touch-manipulation flex-shrink-0"
                     >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Line Item
+                      <Plus className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Add Line Item</span>
                     </button>
                   </div>
                 </div>
 
                 {showLineItemForm && (
-                  <form onSubmit={handleAddLineItem} className="p-6 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+                  <form onSubmit={handleAddLineItem} className="p-4 sm:p-6 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -609,17 +611,17 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center justify-end gap-3 mt-4">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 mt-4">
                       <button
                         type="button"
                         onClick={() => setShowLineItemForm(false)}
-                        className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                        className="px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors touch-manipulation order-2 sm:order-1"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                        className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors touch-manipulation order-1 sm:order-2"
                       >
                         Add Item
                       </button>
@@ -627,76 +629,73 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   </form>
                 )}
 
-                <div className="overflow-x-auto">
-                  {invoice.line_items.length === 0 ? (
-                    <div className="p-12 text-center text-gray-500 dark:text-gray-400">
-                      No line items yet. Add one to get started.
-                    </div>
-                  ) : (
-                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                      <thead className="bg-gray-50 dark:bg-gray-900">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Description
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Type
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Date
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Qty
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Rate
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Disc%
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Total
-                          </th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                        {invoice.line_items.map((item) => {
-                          const discountedRate = calculateDiscountedRate(item.unit_rate, item.discount_percentage || 0)
+                {/* Line Items Display */}
+                {invoice.line_items.length === 0 ? (
+                  <div className="p-8 sm:p-12 text-center text-gray-500 dark:text-gray-400">
+                    No line items yet. Add one to get started.
+                  </div>
+                ) : (
+                  <>
+                    {/* Mobile Card Layout */}
+                    <div className="block lg:hidden divide-y divide-gray-200 dark:divide-gray-700">
+                      {invoice.line_items.map((item) => {
+                        const discountedRate = calculateDiscountedRate(item.unit_rate, item.discount_percentage || 0)
 
-                          return (
-                            <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                              <td className="px-6 py-4">
-                                <div>
-                                  <div className="text-sm text-gray-900 dark:text-white">{item.description}</div>
-                                  {item.discount_reason && item.discount_percentage > 0 && (
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                      Discount: {item.discount_reason}
-                                    </div>
-                                  )}
-                                  {item.applies_to_debt && item.discount_percentage > 0 && (
-                                    <div className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
-                                      <CheckCircle className="h-3 w-3" />
-                                      Debt repayment
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
+                        return (
+                          <div key={item.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            {/* Description and Type */}
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1 min-w-0 mr-3">
+                                <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1 break-words">
+                                  {item.description}
+                                </h3>
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getItemTypeColor(item.item_type)}`}>
                                   {item.item_type}
                                 </span>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
-                                {formatDate(item.date)}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-right text-gray-900 dark:text-white">
-                                {item.quantity}
-                              </td>
-                              <td className="px-6 py-4 text-sm text-right">
-                                <div>
+                                {item.discount_reason && item.discount_percentage > 0 && (
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                    Discount: {item.discount_reason}
+                                  </div>
+                                )}
+                                {item.applies_to_debt && item.discount_percentage > 0 && (
+                                  <div className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Debt repayment
+                                  </div>
+                                )}
+                              </div>
+                              {/* Actions */}
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <button
+                                  onClick={() => handleEditLineItem(item)}
+                                  className="p-2 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 rounded-lg touch-manipulation"
+                                  title="Edit"
+                                >
+                                  <Edit2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteLineItem(item.id)}
+                                  className="p-2 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg touch-manipulation"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Details Grid */}
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <span className="text-gray-500 dark:text-gray-400">Date:</span>
+                                <span className="ml-2 text-gray-900 dark:text-white">{formatDate(item.date)}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500 dark:text-gray-400">Qty:</span>
+                                <span className="ml-2 text-gray-900 dark:text-white">{item.quantity}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500 dark:text-gray-400">Rate:</span>
+                                <div className="ml-2 inline-block">
                                   <div className="text-gray-900 dark:text-white">{formatCurrency(item.unit_rate)}</div>
                                   {item.discount_percentage > 0 && (
                                     <div className="text-xs text-green-600 dark:text-green-400">
@@ -704,48 +703,143 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                                     </div>
                                   )}
                                 </div>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-right">
-                                <span className={item.discount_percentage > 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-500 dark:text-gray-400'}>
+                              </div>
+                              <div>
+                                <span className="text-gray-500 dark:text-gray-400">Disc:</span>
+                                <span className={`ml-2 ${item.discount_percentage > 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
                                   {item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}
                                 </span>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-right font-medium text-gray-900 dark:text-white">
+                              </div>
+                            </div>
+
+                            {/* Total */}
+                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Total:</span>
+                              <span className="text-lg font-bold text-gray-900 dark:text-white">
                                 {formatCurrency(calculateLineItemTotal(item))}
-                              </td>
-                              <td className="px-6 py-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    onClick={() => handleEditLineItem(item)}
-                                    className="p-1 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
-                                    title="Edit"
-                                  >
-                                    <Edit2 className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteLineItem(item.id)}
-                                    className="p-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                                    title="Delete"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* Desktop Table Layout */}
+                    <div className="hidden lg:block overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead className="bg-gray-50 dark:bg-gray-900">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              Description
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              Type
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              Date
+                            </th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              Qty
+                            </th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              Rate
+                            </th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              Disc%
+                            </th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              Total
+                            </th>
+                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                              Actions
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                          {invoice.line_items.map((item) => {
+                            const discountedRate = calculateDiscountedRate(item.unit_rate, item.discount_percentage || 0)
+
+                            return (
+                              <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                <td className="px-6 py-4">
+                                  <div>
+                                    <div className="text-sm text-gray-900 dark:text-white">{item.description}</div>
+                                    {item.discount_reason && item.discount_percentage > 0 && (
+                                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                        Discount: {item.discount_reason}
+                                      </div>
+                                    )}
+                                    {item.applies_to_debt && item.discount_percentage > 0 && (
+                                      <div className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
+                                        <CheckCircle className="h-3 w-3" />
+                                        Debt repayment
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getItemTypeColor(item.item_type)}`}>
+                                    {item.item_type}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                                  {formatDate(item.date)}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-right text-gray-900 dark:text-white">
+                                  {item.quantity}
+                                </td>
+                                <td className="px-6 py-4 text-sm text-right">
+                                  <div>
+                                    <div className="text-gray-900 dark:text-white">{formatCurrency(item.unit_rate)}</div>
+                                    {item.discount_percentage > 0 && (
+                                      <div className="text-xs text-green-600 dark:text-green-400">
+                                        {formatCurrency(discountedRate)}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-right">
+                                  <span className={item.discount_percentage > 0 ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-500 dark:text-gray-400'}>
+                                    {item.discount_percentage > 0 ? `${item.discount_percentage}%` : '-'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-sm text-right font-medium text-gray-900 dark:text-white">
+                                  {formatCurrency(calculateLineItemTotal(item))}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => handleEditLineItem(item)}
+                                      className="p-1 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                                      title="Edit"
+                                    >
+                                      <Edit2 className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteLineItem(item.id)}
+                                      className="p-1 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                      title="Delete"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
             {/* Sidebar */}
             <div className="space-y-6">
               {/* Totals Card */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-4">
                   Summary
                 </h2>
                 <div className="space-y-3">
@@ -784,18 +878,18 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
               </div>
 
               {/* Receipts Card */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
                     Receipts ({invoice.receipts.length})
                   </h2>
-                  <label className="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg cursor-pointer transition-colors">
+                  <label className="inline-flex items-center px-3 py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg cursor-pointer transition-colors touch-manipulation flex-shrink-0">
                     {uploadingReceipt ? (
-                      <>Uploading...</>
+                      <span className="px-1">Uploading...</span>
                     ) : (
                       <>
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload
+                        <Upload className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">Upload</span>
                       </>
                     )}
                     <input
