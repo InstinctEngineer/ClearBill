@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Empty turbopack config allows dev mode with Turbopack while keeping webpack config for builds
+  turbopack: {},
   webpack: (config, { isServer }) => {
     // Ignore canvas module for client-side builds (pdfjs-dist uses it for Node.js only)
     if (!isServer) {
