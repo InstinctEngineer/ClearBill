@@ -17,6 +17,7 @@ import {
   Save,
   X,
   Download,
+  Eye,
 } from 'lucide-react'
 import { formatCurrency, formatDate, calculateDiscountedRate, calculateLineItemTotal } from '@/lib/utils/calculations'
 import type { InvoiceWithDetails, LineItem, Receipt } from '@/lib/types/database.types'
@@ -51,6 +52,11 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
   // Receipt upload state
   const [uploadingReceipt, setUploadingReceipt] = useState(false)
+
+  // Preview modal state
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewType, setPreviewType] = useState<'pdf' | 'excel' | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string>('')
 
   useEffect(() => {
     fetchInvoice()
@@ -238,6 +244,19 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  const handlePreview = (type: 'pdf' | 'excel') => {
+    const url = `/api/invoices/${resolvedParams.id}/export/${type}`
+    setPreviewUrl(url)
+    setPreviewType(type)
+    setShowPreview(true)
+  }
+
+  const handleClosePreview = () => {
+    setShowPreview(false)
+    setPreviewUrl('')
+    setPreviewType(null)
+  }
+
 
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
@@ -355,25 +374,45 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
             {/* Action Buttons - Responsive Grid */}
             <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3">
-              {/* Export Buttons */}
-              <a
-                href={`/api/invoices/${invoice.id}/export/pdf`}
-                download
-                className="inline-flex items-center justify-center px-3 sm:px-4 py-2.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors touch-manipulation"
-                title="Export as PDF"
-              >
-                <Download className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">PDF</span>
-              </a>
-              <a
-                href={`/api/invoices/${invoice.id}/export/excel`}
-                download
-                className="inline-flex items-center justify-center px-3 sm:px-4 py-2.5 sm:py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors touch-manipulation"
-                title="Export as Excel"
-              >
-                <Download className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">Excel</span>
-              </a>
+              {/* PDF Preview & Export */}
+              <div className="flex gap-1">
+                <button
+                  onClick={() => handlePreview('pdf')}
+                  className="inline-flex items-center justify-center px-2 sm:px-3 py-2.5 sm:py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-l-lg transition-colors touch-manipulation"
+                  title="Preview PDF"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+                <a
+                  href={`/api/invoices/${invoice.id}/export/pdf`}
+                  download
+                  className="inline-flex items-center justify-center px-2 sm:px-3 py-2.5 sm:py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-r-lg transition-colors touch-manipulation"
+                  title="Download PDF"
+                >
+                  <Download className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">PDF</span>
+                </a>
+              </div>
+
+              {/* Excel Preview & Export */}
+              <div className="flex gap-1">
+                <button
+                  onClick={() => handlePreview('excel')}
+                  className="inline-flex items-center justify-center px-2 sm:px-3 py-2.5 sm:py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-l-lg transition-colors touch-manipulation"
+                  title="Preview Excel"
+                >
+                  <Eye className="h-4 w-4" />
+                </button>
+                <a
+                  href={`/api/invoices/${invoice.id}/export/excel`}
+                  download
+                  className="inline-flex items-center justify-center px-2 sm:px-3 py-2.5 sm:py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-r-lg transition-colors touch-manipulation"
+                  title="Download Excel"
+                >
+                  <Download className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Excel</span>
+                </a>
+              </div>
 
               {/* Mark as Paid Button */}
               <button
@@ -955,6 +994,62 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
           }}
           onSave={handleSaveLineItem}
         />
+      )}
+
+      {/* Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+              onClick={handleClosePreview}
+            />
+
+            {/* Modal */}
+            <div className="relative w-full max-w-7xl bg-white dark:bg-gray-800 rounded-lg shadow-xl">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {previewType === 'pdf' ? 'PDF Preview' : 'Excel Preview'}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={previewUrl}
+                    download
+                    className="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </a>
+                  <button
+                    onClick={handleClosePreview}
+                    className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-4" style={{ height: 'calc(100vh - 12rem)' }}>
+                {previewType === 'pdf' ? (
+                  <iframe
+                    src={previewUrl}
+                    className="w-full h-full rounded border border-gray-200 dark:border-gray-700"
+                    title="PDF Preview"
+                  />
+                ) : (
+                  <iframe
+                    src={previewUrl}
+                    className="w-full h-full rounded border border-gray-200 dark:border-gray-700"
+                    title="Excel Preview"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
