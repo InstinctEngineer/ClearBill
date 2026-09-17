@@ -1,0 +1,224 @@
+import jsPDF from 'jspdf'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { enhanceInvoice, calculateDebtDiscount } from '@/lib/utils/calculations'
+import type { Invoice, InvoiceWithDetails, LineItem } from '@/lib/types/database.types'
+
+export interface InvoicePdf {
+  buffer: Buffer
+  filename: string
+  invoice: Invoice
+  lineItems: LineItem[]
+  enhancedInvoice: InvoiceWithDetails
+}
+
+/**
+ * Build the invoice PDF. Shared by the download/preview route and the send route.
+ * Returns null if the invoice doesn't exist.
+ */
+export async function buildInvoicePdf(supabase: SupabaseClient, id: string): Promise<InvoicePdf | null> {
+  const { data: invoice, error: invoiceError } = await supabase
+    .from('invoices')
+    .select('*')
+    .eq('id', id)
+    .single()
+
+  if (invoiceError || !invoice) return null
+
+  const { data: lineItems } = await supabase
+    .from('line_items')
+    .select('*')
+    .eq('invoice_id', id)
+    .order('date', { ascending: false })
+
+  const enhancedInvoice = enhanceInvoice(invoice as Invoice, lineItems as LineItem[] || [])
+
+  // Fetch all line items for debt tracking
+  const { data: allLineItems } = await supabase
+    .from('line_items')
+    .select('*')
+
+  // Fetch debt total from settings
+  const { data: debtSetting } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'DEBT_TOTAL')
+    .single()
+
+  const debtTotal = debtSetting ? parseFloat(debtSetting.value) : 0
+  const totalDebtRepaid = calculateDebtDiscount(allLineItems as LineItem[] || [])
+  const remainingDebt = Math.max(0, debtTotal - totalDebtRepaid)
+
+  // Create PDF
+  const doc = new jsPDF()
+
+  // Title
+  doc.setFontSize(24)
+  doc.setFont('helvetica', 'bold')
+  doc.text('INVOICE', 20, 20)
+
+  // Invoice details
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'normal')
+  doc.text(`Invoice Date: ${new Date(invoice.date).toLocaleDateString()}`, 20, 35)
+
+  // Client info
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Bill To:', 20, 50)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.text(invoice.client, 20, 57)
+
+  // Project name
+  doc.setFontSize(14)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Project:', 20, 73)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(12)
+  doc.text(invoice.project_name, 20, 80)
+
+  // Line items table
+  let yPos = 100
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+
+  // Table header
+  doc.text('Description', 20, yPos)
+  doc.text('Qty', 85, yPos)
+  doc.text('Reg. Rate', 100, yPos)
+  doc.text('Disc%', 125, yPos)
+  doc.text('Disc. Rate', 145, yPos)
+  doc.text('Total', 190, yPos, { align: 'right' })
+
+  yPos += 5
+  doc.line(20, yPos, 190, yPos) // Horizontal line
+  yPos += 7
+
+  // Table rows
+  doc.setFont('helvetica', 'normal')
+  if (lineItems && lineItems.length > 0) {
+    for (const item of lineItems) {
+      const discountPercentage = item.discount_percentage || 0
+      const discountedRate = item.unit_rate * (1 - discountPercentage / 100)
+      const total = item.quantity * discountedRate
+
+      // Description (wrap if too long)
+      const description = item.description.length > 30
+        ? item.description.substring(0, 30) + '...'
+        : item.description
+
+      doc.text(description, 20, yPos)
+      doc.text(item.quantity.toString(), 85, yPos)
+      doc.text(`$${item.unit_rate.toFixed(2)}`, 100, yPos)
+      doc.text(discountPercentage > 0 ? `${discountPercentage}%` : '-', 125, yPos)
+      doc.text(`$${discountedRate.toFixed(2)}`, 145, yPos)
+      doc.text(`$${total.toFixed(2)}`, 190, yPos, { align: 'right' })
+
+      // Add discount reason if present
+      if (item.discount_reason && item.discount_percentage > 0) {
+        yPos += 5
+        doc.setFontSize(8)
+        doc.setTextColor(100, 100, 100)
+        doc.text(`  Discount reason: ${item.discount_reason}`, 20, yPos)
+        doc.setTextColor(0, 0, 0)
+        doc.setFontSize(9)
+      }
+
+      yPos += 7
+
+      // Add new page if needed
+      if (yPos > 250) {
+        doc.addPage()
+        yPos = 20
+      }
+    }
+  } else {
+    doc.text('No line items', 20, yPos)
+    yPos += 7
+  }
+
+  // Totals section
+  yPos += 5
+  doc.line(100, yPos, 190, yPos)
+  yPos += 10
+
+  // Calculate original subtotal (before any discounts)
+  const originalSubtotal = (lineItems as LineItem[] || []).reduce((sum, item) => {
+    return sum + (item.quantity * item.unit_rate)
+  }, 0)
+
+  // Calculate total discount amount (all line item discounts)
+  const totalDiscount = originalSubtotal - enhancedInvoice.subtotal
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.text('Subtotal:', 120, yPos)
+  doc.text(`$${originalSubtotal.toFixed(2)}`, 190, yPos, { align: 'right' })
+
+  // Show total discount if there are any discounts
+  if (totalDiscount > 0) {
+    yPos += 8
+    doc.setTextColor(220, 38, 38) // Red color for discount
+    doc.setFontSize(9)
+    doc.text('Discount Applied:', 120, yPos)
+    doc.text(`-$${totalDiscount.toFixed(2)}`, 190, yPos, { align: 'right' })
+    doc.setTextColor(0, 0, 0) // Reset to black
+    doc.setFontSize(10)
+  }
+
+  yPos += 10
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.text('Amount Due:', 120, yPos)
+  doc.text(`$${enhancedInvoice.subtotal.toFixed(2)}`, 190, yPos, { align: 'right' })
+
+  // Payment status
+  if (invoice.paid) {
+    yPos += 15
+    doc.setFontSize(14)
+    doc.setTextColor(34, 197, 94) // Green
+    doc.text('PAID', 20, yPos)
+    if (invoice.paid_date) {
+      doc.setFontSize(10)
+      doc.text(`Payment received: ${new Date(invoice.paid_date).toLocaleDateString()}`, 20, yPos + 7)
+    }
+  }
+
+  // Debt tracking section (if debt exists)
+  if (debtTotal > 0) {
+    yPos += invoice.paid ? 20 : 15
+    doc.setFontSize(10)
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Debt Repayment Progress:', 20, yPos)
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    yPos += 7
+    doc.text(`Total Debt: $${debtTotal.toFixed(2)}`, 20, yPos)
+    yPos += 5
+    doc.text(`Repaid to Date: $${totalDebtRepaid.toFixed(2)}`, 20, yPos)
+    yPos += 5
+    doc.setFont('helvetica', 'bold')
+    doc.text(`Remaining Balance: $${remainingDebt.toFixed(2)}`, 20, yPos)
+
+    // Progress percentage
+    const percentageRepaid = debtTotal > 0 ? (totalDebtRepaid / debtTotal) * 100 : 0
+    yPos += 5
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Progress: ${Math.min(100, percentageRepaid).toFixed(1)}%`, 20, yPos)
+  }
+
+  // Footer
+  doc.setFontSize(8)
+  doc.setTextColor(128, 128, 128)
+  doc.text('Generated with ClearBill Invoice Tracker', 105, 285, { align: 'center' })
+
+  return {
+    buffer: Buffer.from(doc.output('arraybuffer')),
+    filename: `Invoice-${id}-${invoice.project_name.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
+    invoice: invoice as Invoice,
+    lineItems: (lineItems as LineItem[]) || [],
+    enhancedInvoice: enhancedInvoice as InvoiceWithDetails,
+  }
+}
