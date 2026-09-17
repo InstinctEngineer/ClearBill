@@ -18,11 +18,13 @@ import {
   X,
   Download,
   Eye,
+  Send,
 } from 'lucide-react'
 import { formatCurrency, formatDate, calculateDiscountedRate, calculateLineItemTotal } from '@/lib/utils/calculations'
 import type { InvoiceWithDetails, LineItem, Receipt } from '@/lib/types/database.types'
 import EditLineItemModal from '@/components/EditLineItemModal'
 import ReceiptDetails from '@/components/ReceiptDetails'
+import SendInvoiceModal from '@/components/SendInvoiceModal'
 
 export default function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
@@ -57,6 +59,9 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
   const [showPreview, setShowPreview] = useState(false)
   const [previewType, setPreviewType] = useState<'pdf' | 'excel' | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string>('')
+
+  // Send invoice modal state
+  const [showSendModal, setShowSendModal] = useState(false)
 
   useEffect(() => {
     fetchInvoice()
@@ -374,6 +379,15 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
 
             {/* Action Buttons - Responsive Grid */}
             <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3">
+              {/* Send Invoice */}
+              <button
+                onClick={() => setShowSendModal(true)}
+                className="col-span-2 sm:col-span-1 inline-flex items-center justify-center px-4 sm:px-6 py-2.5 sm:py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors touch-manipulation"
+              >
+                <Send className="h-5 w-5 mr-2" />
+                {invoice.sent_at ? 'Resend Invoice' : 'Send Invoice'}
+              </button>
+
               {/* PDF Preview & Export */}
               <div className="flex gap-1">
                 <button
@@ -480,6 +494,15 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                     <p className="text-lg font-medium text-gray-900 dark:text-white">
                       {invoice.tax_rate}%
                     </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Sent</p>
+                    <p className="text-lg font-medium text-gray-900 dark:text-white">
+                      {invoice.sent_at ? formatDate(invoice.sent_at) : 'Not sent'}
+                    </p>
+                    {invoice.sent_to && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 break-all">{invoice.sent_to}</p>
+                    )}
                   </div>
                   {invoice.paid && invoice.paid_date && (
                     <div>
@@ -993,6 +1016,19 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             setEditingLineItem(null)
           }}
           onSave={handleSaveLineItem}
+        />
+      )}
+
+      {/* Send Invoice Modal */}
+      {showSendModal && (
+        <SendInvoiceModal
+          invoice={invoice}
+          onClose={() => setShowSendModal(false)}
+          onSent={() => {
+            setShowSendModal(false)
+            fetchInvoice()
+          }}
+          onPreview={() => handlePreview('pdf')}
         />
       )}
 
