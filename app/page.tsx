@@ -258,6 +258,11 @@ export default function InvoicesPage() {
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(invoice.waived ? 'Waived' : invoice.overdue_status)}`}>
                             {invoice.waived ? 'Waived' : invoice.overdue_status}
                           </span>
+                          {!invoice.paid && !invoice.waived && (
+                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {invoice.sent_at ? `Sent ${formatDate(invoice.sent_at)}` : 'Not sent'}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end gap-2">
