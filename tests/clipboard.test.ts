@@ -13,7 +13,7 @@ import {
   validateDraft,
   draftToPayload,
   draftTotal,
-} from '../lib/lineItemGrid.ts'
+} from '../lib/lineItemGrid'
 
 const columns = GRID_COLUMNS
 const base = { ...emptyDraft('2026-03-01') }

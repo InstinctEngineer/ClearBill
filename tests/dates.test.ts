@@ -16,7 +16,7 @@ import {
   parseDateOnly,
   toDateOnly,
   yearOfDateOnly,
-} from '../lib/utils/dates.ts'
+} from '../lib/utils/dates'
 
 // Anywhere west of UTC is where the bug showed up; assert the helpers are
 // immune regardless of where the process runs.
