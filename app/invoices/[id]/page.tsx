@@ -436,26 +436,6 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                   )}
                 </div>
               </div>
-
-              {/* Line Items */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
-                <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
-                  <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
-                    Line Items
-                  </h2>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Type directly into the grid. Rows save themselves as you move on.
-                  </p>
-                </div>
-
-                <LineItemGrid
-                  invoiceId={invoice.id}
-                  lineItems={invoice.line_items}
-                  defaultDate={invoice.date}
-                  showDebtColumn={settings.debtTrackingEnabled}
-                  onChanged={fetchInvoice}
-                />
-              </div>
             </div>
 
             {/* Sidebar */}
@@ -563,6 +543,26 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Line Items — full width; the grid needs every pixel it can get */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-8">
+            <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">
+                Line Items
+              </h2>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Type directly into the grid. Rows save themselves as you move on.
+              </p>
+            </div>
+
+            <LineItemGrid
+              invoiceId={invoice.id}
+              lineItems={invoice.line_items}
+              defaultDate={invoice.date}
+              showDebtColumn={settings.debtTrackingEnabled}
+              onChanged={fetchInvoice}
+            />
           </div>
         </div>
       </div>

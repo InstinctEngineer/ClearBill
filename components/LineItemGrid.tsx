@@ -11,6 +11,7 @@ import {
   emptyDraft,
   isBlank,
   parseClipboard,
+  tableMinWidthPx,
   type ColumnKey,
   type GridColumn,
   type GridRow,
@@ -132,7 +133,7 @@ export default function LineItemGrid({
   }
 
   const cellClasses =
-    'w-full bg-transparent px-2 py-1.5 text-sm text-gray-900 dark:text-white border border-transparent rounded focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 focus:outline-none'
+    'w-full min-w-0 bg-transparent px-1.5 py-1.5 text-sm text-gray-900 dark:text-white border border-transparent rounded focus:border-blue-500 focus:bg-white dark:focus:bg-gray-900 focus:outline-none'
 
   return (
     <div ref={containerRef}>
@@ -174,28 +175,39 @@ export default function LineItemGrid({
         </div>
       )}
 
+      {/*
+        The table is given an explicit minimum width so a narrow container
+        scrolls it instead of squeezing every column until the text clips.
+        Total and the row actions are pinned to the right edge, so the money
+        stays readable however far the rest is scrolled.
+      */}
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+        <table
+          className="w-full border-collapse text-sm"
+          style={{ minWidth: `${tableMinWidthPx(columns)}px` }}
+        >
           <thead>
-            <tr className="bg-gray-50 dark:bg-gray-900/40 text-left">
+            <tr className="text-left">
               {columns.map((column) => (
                 <th
                   key={column.key}
                   scope="col"
-                  className={`${column.width} px-2 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700`}
+                  className={`${column.width} bg-gray-50 dark:bg-gray-900/40 px-2 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 ${
+                    column.kind === 'check' ? 'text-center' : ''
+                  }`}
                 >
                   {column.label}
                 </th>
               ))}
               <th
                 scope="col"
-                className="w-28 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
+                className="sticky right-14 z-10 w-28 bg-gray-50 dark:bg-gray-900/40 px-2 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700"
               >
                 Total
               </th>
               <th
                 scope="col"
-                className="w-16 px-2 py-2 border-b border-gray-200 dark:border-gray-700"
+                className="sticky right-0 z-10 w-14 bg-gray-50 dark:bg-gray-900/40 px-2 py-2 border-b border-gray-200 dark:border-gray-700"
               >
                 <span className="sr-only">Row actions</span>
               </th>
@@ -204,6 +216,14 @@ export default function LineItemGrid({
           <tbody>
             {rows.map((row, rowIndex) => {
               const blank = row.id === null && isBlank(row.draft)
+              // Pinned cells need an opaque background of their own, or the
+              // scrolled columns show through them.
+              const rowBg =
+                row.status === 'error'
+                  ? 'bg-red-50 dark:bg-red-950/40'
+                  : blank
+                    ? 'bg-gray-50 dark:bg-gray-900/60'
+                    : 'bg-white dark:bg-gray-800'
               return (
                 <tr
                   key={row.key}
@@ -212,16 +232,14 @@ export default function LineItemGrid({
                     if (event.currentTarget.contains(event.relatedTarget as Node)) return
                     void commitRow(row.key, invoiceId)
                   }}
-                  className={`border-b border-gray-100 dark:border-gray-800 ${
-                    row.status === 'error'
-                      ? 'bg-red-50 dark:bg-red-900/10'
-                      : blank
-                        ? 'bg-gray-50/50 dark:bg-gray-900/20'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-900/30'
+                  className={`border-b border-gray-100 dark:border-gray-800 ${rowBg} ${
+                    row.status === 'error' || blank
+                      ? ''
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-900/30'
                   }`}
                 >
                   {columns.map((column, columnIndex) => (
-                    <td key={column.key} className="px-1 py-0.5 align-middle">
+                    <td key={column.key} className={`${column.width} px-1 py-0.5 align-middle`}>
                       <Cell
                         column={column}
                         row={row}
@@ -234,11 +252,13 @@ export default function LineItemGrid({
                     </td>
                   ))}
 
-                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-900 dark:text-white">
+                  <td
+                    className={`sticky right-14 z-10 w-28 ${rowBg} px-2 py-1.5 text-right tabular-nums font-medium text-gray-900 dark:text-white`}
+                  >
                     {blank ? '' : formatCurrency(draftTotal(row.draft))}
                   </td>
 
-                  <td className="px-2 py-1.5">
+                  <td className={`sticky right-0 z-10 w-14 ${rowBg} px-2 py-1.5`}>
                     <div className="flex items-center justify-end gap-1.5">
                       <RowStatusIcon row={row} />
                       {!blank && (
@@ -351,7 +371,12 @@ function Cell({ column, row, className, address, onEdit, onKeyDown, onPaste }: C
       step={column.kind === 'number' ? '0.01' : undefined}
       value={String(value)}
       onChange={(event) => onEdit(event.target.value)}
-      className={`${className} ${column.kind === 'number' ? 'text-right tabular-nums' : ''}`}
+      // Spinner arrows steal width a narrow numeric column cannot spare.
+      className={`${className} ${
+        column.kind === 'number'
+          ? 'text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+          : ''
+      }`}
       aria-label={column.label}
       placeholder={column.kind === 'number' ? '0' : ''}
     />

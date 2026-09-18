@@ -31,24 +31,41 @@ export interface GridColumn {
   key: ColumnKey
   label: string
   kind: ColumnKind
-  /** Tailwind width class for the column. */
+  /**
+   * Tailwind width class. Every column is sized to its widest real content —
+   * a native date input with its picker icon, the word "Hardware" in the type
+   * select — because a column narrower than that clips instead of scrolling.
+   */
   width: string
+  /** Minimum pixels this column needs; summed to set the table's min-width. */
+  minPx: number
   /** Column only renders when this feature is switched on. */
   feature?: 'debt'
 }
 
 /** The editable columns, left to right. Drives header, paste order and nav. */
 export const GRID_COLUMNS: readonly GridColumn[] = [
-  { key: 'date', label: 'Date', kind: 'date', width: 'w-36' },
-  { key: 'description', label: 'Description', kind: 'text', width: 'min-w-[14rem]' },
-  { key: 'item_type', label: 'Type', kind: 'select', width: 'w-32' },
-  { key: 'quantity', label: 'Qty', kind: 'number', width: 'w-20' },
-  { key: 'unit_rate', label: 'Rate', kind: 'number', width: 'w-24' },
-  { key: 'discount_percentage', label: 'Disc %', kind: 'number', width: 'w-20' },
-  { key: 'discount_reason', label: 'Discount reason', kind: 'text', width: 'min-w-[10rem]' },
-  { key: 'client_pays', label: 'Client pays', kind: 'check', width: 'w-24' },
-  { key: 'applies_to_debt', label: 'To debt', kind: 'check', width: 'w-20', feature: 'debt' },
+  { key: 'date', label: 'Date', kind: 'date', width: 'w-[8.5rem]', minPx: 136 },
+  { key: 'description', label: 'Description', kind: 'text', width: 'min-w-[15rem]', minPx: 240 },
+  { key: 'item_type', label: 'Type', kind: 'select', width: 'w-[7.5rem]', minPx: 120 },
+  { key: 'quantity', label: 'Qty', kind: 'number', width: 'w-16', minPx: 64 },
+  { key: 'unit_rate', label: 'Rate', kind: 'number', width: 'w-24', minPx: 96 },
+  { key: 'discount_percentage', label: 'Disc %', kind: 'number', width: 'w-20', minPx: 80 },
+  { key: 'discount_reason', label: 'Reason', kind: 'text', width: 'min-w-[9rem]', minPx: 144 },
+  { key: 'client_pays', label: 'Billed', kind: 'check', width: 'w-16', minPx: 64 },
+  { key: 'applies_to_debt', label: 'Debt', kind: 'check', width: 'w-16', minPx: 64, feature: 'debt' },
 ]
+
+/** Width the Total and row-action columns occupy, pinned to the right edge. */
+export const TRAILING_COLUMNS_PX = 112 + 56
+
+/**
+ * Narrowest the table can be drawn without clipping a cell. Below this the
+ * container scrolls horizontally rather than squeezing columns.
+ */
+export function tableMinWidthPx(columns: readonly GridColumn[]): number {
+  return columns.reduce((sum, column) => sum + column.minPx, 0) + TRAILING_COLUMNS_PX
+}
 
 export type RowStatus = 'clean' | 'dirty' | 'saving' | 'error'
 

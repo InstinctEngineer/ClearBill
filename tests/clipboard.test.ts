@@ -150,3 +150,44 @@ test('the payload sends numbers, not the strings the cells hold', () => {
   assert.equal(payload.discount_percentage, 0)
   assert.equal(payload.discount_reason, null)
 })
+
+// --- layout ---------------------------------------------------------------
+// The grid first shipped inside a two-thirds column (~800px) with columns that
+// needed ~1264px, so every cell clipped instead of scrolling. It now sits full
+// width and declares a min-width the container scrolls to honour.
+
+import { GRID_COLUMNS as COLS, tableMinWidthPx } from '../lib/lineItemGrid'
+
+/** max-w-7xl (1280px) less the page's lg:px-8 gutters. */
+const FULL_WIDTH_AVAILABLE = 1216
+
+test('the grid fits its container at full width, debt column off', () => {
+  const visible = COLS.filter((column) => column.feature !== 'debt')
+  assert.ok(
+    tableMinWidthPx(visible) <= FULL_WIDTH_AVAILABLE,
+    `needs ${tableMinWidthPx(visible)}px but only ${FULL_WIDTH_AVAILABLE}px is available`
+  )
+})
+
+test('the grid still fits with the debt column shown', () => {
+  assert.ok(
+    tableMinWidthPx(COLS) <= FULL_WIDTH_AVAILABLE,
+    `needs ${tableMinWidthPx(COLS)}px but only ${FULL_WIDTH_AVAILABLE}px is available`
+  )
+})
+
+test('every column reserves enough width for its own heading', () => {
+  // ~7.5px per uppercase character at text-xs, plus the cell's horizontal padding.
+  for (const column of COLS) {
+    const headingPx = column.label.length * 7.5 + 16
+    assert.ok(
+      column.minPx >= headingPx,
+      `"${column.label}" reserves ${column.minPx}px but its heading needs ~${Math.ceil(headingPx)}px`
+    )
+  }
+})
+
+test('a date column fits a native date input and its picker icon', () => {
+  const date = COLS.find((column) => column.kind === 'date')
+  assert.ok(date && date.minPx >= 130, 'date inputs clip below ~130px')
+})
