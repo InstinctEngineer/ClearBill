@@ -1,5 +1,41 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { parseLineItem } from '@/lib/lineItems'
+
+/**
+ * Validate a partial line item update by running the provided fields through
+ * the shared create-time parser, then keeping only what the caller sent.
+ */
+function coerce(body: Record<string, unknown>):
+  | { ok: true; value: Record<string, unknown>; error?: never }
+  | { ok: false; value?: never; error: string } {
+  const FIELDS = [
+    'description', 'quantity', 'unit_rate', 'item_type', 'date',
+    'discount_percentage', 'discount_reason', 'applies_to_debt', 'client_pays',
+  ] as const
+
+  const provided = FIELDS.filter((field) => body[field] !== undefined)
+  if (provided.length === 0) return { ok: true, value: {} }
+
+  // parseLineItem validates a whole row, so fill the untouched required fields
+  // with placeholders it accepts and then discard them from the result.
+  const parsed = parseLineItem(
+    {
+      description: 'placeholder',
+      quantity: 0,
+      unit_rate: 0,
+      item_type: 'LABOR',
+      date: '2000-01-01',
+      ...body,
+    },
+    0
+  )
+  if (!parsed.ok) return { ok: false, error: parsed.error }
+
+  const value: Record<string, unknown> = {}
+  for (const field of provided) value[field] = parsed.value[field]
+  return { ok: true, value }
+}
 
 /**
  * PATCH /api/line-items/[id]
@@ -20,19 +56,16 @@ export async function PATCH(
 
   try {
     const body = await request.json()
-    const { description, quantity, unit_rate, item_type, date, discount_percentage, discount_reason, applies_to_debt, client_pays } = body
 
-    // Build update object
-    const updateData: any = {}
-    if (description !== undefined) updateData.description = description
-    if (quantity !== undefined) updateData.quantity = parseFloat(quantity)
-    if (unit_rate !== undefined) updateData.unit_rate = parseFloat(unit_rate)
-    if (item_type !== undefined) updateData.item_type = item_type
-    if (date !== undefined) updateData.date = date
-    if (discount_percentage !== undefined) updateData.discount_percentage = parseFloat(discount_percentage)
-    if (discount_reason !== undefined) updateData.discount_reason = discount_reason
-    if (applies_to_debt !== undefined) updateData.applies_to_debt = applies_to_debt
-    if (client_pays !== undefined) updateData.client_pays = client_pays
+    // Only the provided fields change; each is coerced the same way the
+    // create path coerces it.
+    const coerced = coerce(body)
+    if (!coerced.ok) return NextResponse.json({ error: coerced.error }, { status: 400 })
+    const updateData = coerced.value
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
 
     // Update line item
     const { data: lineItem, error: updateError } = await supabase

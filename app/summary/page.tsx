@@ -32,12 +32,13 @@ interface SummaryData {
     allTimeExpenses: number
     allTimeTax: number
   }
-  debtTracking?: {
+  /** Null whenever debt tracking is switched off in Settings. */
+  debtTracking: {
     totalDebt: number
     totalRepaid: number
     remainingDebt: number
     percentageRepaid: number
-  }
+  } | null
 }
 
 export default function SummaryPage() {
@@ -192,8 +193,8 @@ export default function SummaryPage() {
             </div>
           )}
 
-          {/* Debt Tracking */}
-          {data.debtTracking && data.debtTracking.totalDebt > 0 && (
+          {/* Debt Tracking (opt-in via Settings) */}
+          {data.debtTracking && (
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-6 p-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">

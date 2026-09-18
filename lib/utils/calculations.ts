@@ -1,5 +1,10 @@
-import { Invoice, LineItem, InvoiceWithDetails } from '../types/database.types'
-import { addDays, differenceInDays, format } from 'date-fns'
+import type { Invoice, LineItem, InvoiceWithDetails } from '../types/database.types'
+import {
+  addDaysToDateOnly,
+  daysBetweenDateOnly,
+  formatDateOnly,
+  todayDateOnly,
+} from './dates'
 
 /**
  * Calculate discounted rate for a line item
@@ -43,9 +48,7 @@ export function calculateTotal(subtotal: number): number {
  * Calculate due date (invoice date + 30 days)
  */
 export function calculateDueDate(invoiceDate: string): string {
-  const date = new Date(invoiceDate)
-  const dueDate = addDays(date, 30)
-  return dueDate.toISOString().split('T')[0] // Return YYYY-MM-DD
+  return addDaysToDateOnly(invoiceDate, 30)
 }
 
 /**
@@ -54,9 +57,7 @@ export function calculateDueDate(invoiceDate: string): string {
 export function calculateDaysOverdue(invoiceDate: string, paid: boolean): number {
   if (paid) return 0
 
-  const dueDate = new Date(calculateDueDate(invoiceDate))
-  const today = new Date()
-  const days = differenceInDays(today, dueDate)
+  const days = daysBetweenDateOnly(calculateDueDate(invoiceDate), todayDateOnly())
 
   return Math.max(0, days) // Never negative
 }
@@ -168,8 +169,7 @@ export function formatCurrency(amount: number): string {
  * Format date for display
  */
 export function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  return format(date, 'MMM d, yyyy')
+  return formatDateOnly(dateString)
 }
 
 /**

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { monthOfDateOnly, yearOfDateOnly } from '@/lib/utils/dates'
 
 /**
  * POST /api/invoices/[id]/receipts
@@ -47,9 +48,8 @@ export async function POST(
     }
 
     // Generate storage path: invoices/{invoice_id}/{year}/{month}/{filename}
-    const invoiceDate = new Date(invoice.date)
-    const year = invoiceDate.getFullYear()
-    const month = String(invoiceDate.getMonth() + 1).padStart(2, '0')
+    const year = yearOfDateOnly(invoice.date)
+    const month = String(monthOfDateOnly(invoice.date)).padStart(2, '0')
     const timestamp = Date.now()
     const safeFilename = file.name.replace(/[^a-zA-Z0-9.-]/g, '_')
     const filename = `${timestamp}_${safeFilename}`

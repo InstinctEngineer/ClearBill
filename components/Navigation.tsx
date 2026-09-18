@@ -6,6 +6,7 @@ import { useState } from 'react'
 import {
   FileText,
   BarChart3,
+  Settings,
   LogOut,
   Menu,
   X,
@@ -20,6 +21,7 @@ export default function Navigation() {
   const navItems = [
     { href: '/', label: 'Invoices', icon: FileText },
     { href: '/summary', label: 'Summary', icon: BarChart3 },
+    { href: '/settings', label: 'Settings', icon: Settings },
   ]
 
   const handleLogout = async () => {

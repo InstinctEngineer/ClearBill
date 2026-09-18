@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { enhanceInvoice, calculateDebtDiscount } from '@/lib/utils/calculations'
+import { enhanceInvoice, calculateDebtDiscount, formatDate } from '@/lib/utils/calculations'
+import { getAppSettings } from '@/lib/settings'
 import type { Invoice, InvoiceWithDetails, LineItem } from '@/lib/types/database.types'
 
 export interface InvoicePdf {
@@ -32,21 +33,18 @@ export async function buildInvoicePdf(supabase: SupabaseClient, id: string): Pro
 
   const enhancedInvoice = enhanceInvoice(invoice as Invoice, lineItems as LineItem[] || [])
 
-  // Fetch all line items for debt tracking
-  const { data: allLineItems } = await supabase
-    .from('line_items')
-    .select('*')
+  const settings = await getAppSettings(supabase)
 
-  // Fetch debt total from settings
-  const { data: debtSetting } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'DEBT_TOTAL')
-    .single()
-
-  const debtTotal = debtSetting ? parseFloat(debtSetting.value) : 0
-  const totalDebtRepaid = calculateDebtDiscount(allLineItems as LineItem[] || [])
-  const remainingDebt = Math.max(0, debtTotal - totalDebtRepaid)
+  // Only pay for the all-line-items scan when the debt block will be printed
+  let debtTotal = 0
+  let totalDebtRepaid = 0
+  let remainingDebt = 0
+  if (settings.debtTrackingEnabled) {
+    const { data: allLineItems } = await supabase.from('line_items').select('*')
+    debtTotal = settings.debtTotal
+    totalDebtRepaid = calculateDebtDiscount((allLineItems as LineItem[]) || [])
+    remainingDebt = Math.max(0, debtTotal - totalDebtRepaid)
+  }
 
   // Create PDF
   const doc = new jsPDF()
@@ -59,7 +57,7 @@ export async function buildInvoicePdf(supabase: SupabaseClient, id: string): Pro
   // Invoice details
   doc.setFontSize(10)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Invoice Date: ${new Date(invoice.date).toLocaleDateString()}`, 20, 35)
+  doc.text(`Invoice Date: ${formatDate(invoice.date)}`, 20, 35)
 
   // Client info
   doc.setFontSize(12)
@@ -180,12 +178,12 @@ export async function buildInvoicePdf(supabase: SupabaseClient, id: string): Pro
     doc.text('PAID', 20, yPos)
     if (invoice.paid_date) {
       doc.setFontSize(10)
-      doc.text(`Payment received: ${new Date(invoice.paid_date).toLocaleDateString()}`, 20, yPos + 7)
+      doc.text(`Payment received: ${formatDate(invoice.paid_date)}`, 20, yPos + 7)
     }
   }
 
-  // Debt tracking section (if debt exists)
-  if (debtTotal > 0) {
+  // Debt tracking section (opt-in via Settings)
+  if (settings.debtTrackingEnabled) {
     yPos += invoice.paid ? 20 : 15
     doc.setFontSize(10)
     doc.setTextColor(0, 0, 0)

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { parseLineItem } from '@/lib/lineItems'
 
 /**
  * POST /api/invoices/[id]/line-items
@@ -19,22 +20,9 @@ export async function POST(
   }
 
   try {
-    const body = await request.json()
-    const { description, quantity, unit_rate, item_type, date, discount_percentage, discount_reason, applies_to_debt, client_pays } = body
-
-    // Validation
-    if (!description || !quantity || !unit_rate || !item_type || !date) {
-      return NextResponse.json(
-        { error: 'Missing required fields: description, quantity, unit_rate, item_type, date' },
-        { status: 400 }
-      )
-    }
-
-    if (!['LABOR', 'HARDWARE', 'OTHER'].includes(item_type)) {
-      return NextResponse.json(
-        { error: 'Invalid item_type. Must be LABOR, HARDWARE, or OTHER' },
-        { status: 400 }
-      )
+    const parsed = parseLineItem(await request.json(), parseInt(invoiceId, 10))
+    if (!parsed.ok) {
+      return NextResponse.json({ error: parsed.error }, { status: 400 })
     }
 
     // Verify invoice exists
@@ -51,18 +39,7 @@ export async function POST(
     // Create line item
     const { data: lineItem, error: insertError } = await supabase
       .from('line_items')
-      .insert({
-        invoice_id: parseInt(invoiceId),
-        description,
-        quantity: parseFloat(quantity),
-        unit_rate: parseFloat(unit_rate),
-        item_type,
-        date,
-        discount_percentage: discount_percentage ? parseFloat(discount_percentage) : 0,
-        discount_reason: discount_reason || null,
-        applies_to_debt: applies_to_debt || false,
-        client_pays: client_pays !== undefined ? client_pays : true,
-      })
+      .insert(parsed.value)
       .select()
       .single()
 

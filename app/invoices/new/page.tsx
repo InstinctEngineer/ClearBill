@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Navigation from '@/components/Navigation'
+import { todayDateOnly } from '@/lib/utils/dates'
 import { ArrowLeft, Save } from 'lucide-react'
 import Link from 'next/link'
 
@@ -12,7 +13,7 @@ export default function NewInvoicePage() {
   const [formData, setFormData] = useState({
     project_name: '',
     client: '',
-    date: new Date().toISOString().split('T')[0],
+    date: todayDateOnly(),
     tax_rate: '30',
   })
 

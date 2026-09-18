@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { calculateExpenses, calculateIncome, calculateDebtDiscount } from '@/lib/utils/calculations'
+import { monthOfDateOnly, yearOfDateOnly } from '@/lib/utils/dates'
+import { getAppSettings } from '@/lib/settings'
 import type { Invoice, LineItem } from '@/lib/types/database.types'
 
 interface YearSummary {
@@ -80,7 +82,7 @@ export async function GET(request: Request) {
     // Group invoices by year
     const yearGroups: Record<number, Invoice[]> = {}
     invoices.forEach(invoice => {
-      const year = new Date(invoice.date).getFullYear()
+      const year = yearOfDateOnly(invoice.date)
       if (!yearGroups[year]) {
         yearGroups[year] = []
       }
@@ -97,7 +99,7 @@ export async function GET(request: Request) {
         // Group by month
         const monthGroups: Record<number, Invoice[]> = {}
         yearInvoices.forEach(invoice => {
-          const month = new Date(invoice.date).getMonth() + 1 // 1-12
+          const month = monthOfDateOnly(invoice.date) // 1-12
           if (!monthGroups[month]) {
             monthGroups[month] = []
           }
@@ -207,17 +209,18 @@ export async function GET(request: Request) {
       }
     })
 
-    // Calculate debt tracking totals
-    const totalDebtRepaid = calculateDebtDiscount(lineItems as LineItem[])
-
-    // Fetch debt total from settings
-    const { data: debtSetting } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'DEBT_TOTAL')
-      .single()
-
-    const debtTotal = debtSetting ? parseFloat(debtSetting.value) : 1000.00
+    // Debt tracking is opt-in; when it is off the payload omits it entirely
+    const settings = await getAppSettings(supabase)
+    let debtTracking = null
+    if (settings.debtTrackingEnabled) {
+      const totalRepaid = calculateDebtDiscount(lineItems as LineItem[])
+      debtTracking = {
+        totalDebt: settings.debtTotal,
+        totalRepaid: Math.round(totalRepaid * 100) / 100,
+        remainingDebt: Math.round((settings.debtTotal - totalRepaid) * 100) / 100,
+        percentageRepaid: Math.round((totalRepaid / settings.debtTotal) * 100 * 100) / 100,
+      }
+    }
 
     return NextResponse.json({
       years: yearSummaries,
@@ -227,12 +230,7 @@ export async function GET(request: Request) {
         allTimeExpenses: yearSummaries.reduce((sum, y) => sum + y.totalExpenses, 0),
         allTimeTax: yearSummaries.reduce((sum, y) => sum + y.totalTax, 0),
       },
-      debtTracking: {
-        totalDebt: debtTotal,
-        totalRepaid: Math.round(totalDebtRepaid * 100) / 100,
-        remainingDebt: Math.round((debtTotal - totalDebtRepaid) * 100) / 100,
-        percentageRepaid: Math.round((totalDebtRepaid / debtTotal) * 100 * 100) / 100,
-      },
+      debtTracking,
     })
 
   } catch (error) {

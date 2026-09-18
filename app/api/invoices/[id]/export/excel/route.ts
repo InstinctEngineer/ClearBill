@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
-import { enhanceInvoice, calculateDebtDiscount } from '@/lib/utils/calculations'
+import { enhanceInvoice, calculateDebtDiscount, formatDate } from '@/lib/utils/calculations'
+import { getAppSettings } from '@/lib/settings'
 import type { Invoice, LineItem } from '@/lib/types/database.types'
 
 /**
@@ -41,21 +42,18 @@ export async function GET(
 
     const enhancedInvoice = enhanceInvoice(invoice as Invoice, lineItems as LineItem[] || [])
 
-    // Fetch all line items for debt tracking
-    const { data: allLineItems } = await supabase
-      .from('line_items')
-      .select('*')
+    const settings = await getAppSettings(supabase)
 
-    // Fetch debt total from settings
-    const { data: debtSetting } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'DEBT_TOTAL')
-      .single()
-
-    const debtTotal = debtSetting ? parseFloat(debtSetting.value) : 0
-    const totalDebtRepaid = calculateDebtDiscount(allLineItems as LineItem[] || [])
-    const remainingDebt = Math.max(0, debtTotal - totalDebtRepaid)
+    // Only pay for the all-line-items scan when the debt sheet will be written
+    let debtTotal = 0
+    let totalDebtRepaid = 0
+    let remainingDebt = 0
+    if (settings.debtTrackingEnabled) {
+      const { data: allLineItems } = await supabase.from('line_items').select('*')
+      debtTotal = settings.debtTotal
+      totalDebtRepaid = calculateDebtDiscount((allLineItems as LineItem[]) || [])
+      remainingDebt = Math.max(0, debtTotal - totalDebtRepaid)
+    }
 
     // Create workbook
     const workbook = new ExcelJS.Workbook()
@@ -72,10 +70,10 @@ export async function GET(
 
     invoiceSheet.addRow(['Project:', invoice.project_name])
     invoiceSheet.addRow(['Client:', invoice.client])
-    invoiceSheet.addRow(['Invoice Date:', new Date(invoice.date).toLocaleDateString()])
+    invoiceSheet.addRow(['Invoice Date:', formatDate(invoice.date)])
     invoiceSheet.addRow(['Status:', invoice.paid ? 'PAID' : 'UNPAID'])
     if (invoice.paid && invoice.paid_date) {
-      invoiceSheet.addRow(['Paid Date:', new Date(invoice.paid_date).toLocaleDateString()])
+      invoiceSheet.addRow(['Paid Date:', formatDate(invoice.paid_date)])
     }
     invoiceSheet.addRow([])
 
@@ -101,7 +99,7 @@ export async function GET(
         invoiceSheet.addRow([
           item.description,
           item.item_type,
-          new Date(item.date).toLocaleDateString(),
+          formatDate(item.date),
           item.quantity,
           item.unit_rate,
           discountPercentage > 0 ? discountPercentage : '',
@@ -170,8 +168,8 @@ export async function GET(
     taxSheet.getColumn(1).width = 20
     taxSheet.getColumn(2).width = 15
 
-    // Debt Tracking sheet (if debt exists)
-    if (debtTotal > 0) {
+    // Debt Tracking sheet (opt-in via Settings)
+    if (settings.debtTrackingEnabled) {
       const debtSheet = workbook.addWorksheet('Debt Tracking')
       debtSheet.addRow(['Debt Repayment Progress'])
       debtSheet.getCell('A1').font = { size: 14, bold: true }
