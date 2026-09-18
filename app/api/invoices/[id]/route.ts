@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { todayDateOnly } from '@/lib/utils/dates'
 import { enhanceInvoice } from '@/lib/utils/calculations'
 import type { Invoice, LineItem } from '@/lib/types/database.types'
 
@@ -98,7 +99,7 @@ export async function PATCH(
       updates.paid = body.paid
       // Auto-set paid_date when marking as paid
       if (body.paid) {
-        updates.paid_date = new Date().toISOString().split('T')[0]
+        updates.paid_date = todayDateOnly()
       } else {
         updates.paid_date = null
       }

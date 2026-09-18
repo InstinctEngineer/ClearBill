@@ -42,10 +42,16 @@ This is a complete rebuild of the original Flask/SQLite invoice tracker applicat
   - Organized by invoice/year/month
   - Secure file storage with signed URLs
 
-- **Data Migration**
-  - Script to migrate from SQLite to Supabase
-  - Transfers invoices, line items, and receipts
-  - Preserves file organization structure
+- **Line Item Entry**
+  - Spreadsheet-style grid: type straight into cells, no modal
+  - Keyboard navigation (Tab, Enter, arrow keys)
+  - Paste a block of rows from Excel or Google Sheets
+  - Per-row autosave with inline validation
+
+- **Settings**
+  - Debt repayment tracking is an opt-in feature with an editable total
+  - Turning it off hides it from invoices, exports and the summary without
+    deleting any history
 
 - **UI/UX**
   - Responsive design (mobile, tablet, desktop)
@@ -53,16 +59,22 @@ This is a complete rebuild of the original Flask/SQLite invoice tracker applicat
   - Clean, modern interface with Tailwind CSS
   - Accessible navigation
 
-### 🚧 To Be Completed
+- **Exports & Delivery**
+  - PDF and Excel export, with in-app preview
+  - Bulk invoice import from Excel
+  - Send invoices by email via Microsoft Graph
 
-- **Invoice Detail Page** - View full invoice with line items and receipts (UI needs to be built)
-- **Summary/Reporting Page** - Financial summaries by year/month (API complete, UI needed)
-- **PDF Export** - Generate PDF invoices
-- **Excel Export/Import** - Export invoices to Excel, bulk import
+### 📅 Date Handling
+
+Invoice and line item dates are Postgres `DATE` values: calendar days with no
+timezone. They are read and written exclusively through `lib/utils/dates.ts`,
+which parses them at local midnight. Passing one to `new Date()` directly
+parses it as UTC midnight and renders the previous day anywhere west of UTC,
+which is what made reports read a day early.
 
 ## 📦 Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **Database**: Supabase (PostgreSQL)
@@ -106,20 +118,7 @@ Follow the detailed instructions in [SUPABASE_SETUP.md](./SUPABASE_SETUP.md):
 3. Set up Row Level Security policies
 4. Create your user account
 
-### Step 4: Migrate Your Data (Optional)
-
-If you have data from the old Flask application:
-
-1. Update the path in `scripts/migrate-data.ts` to point to your `invoices.db` file
-2. Run the migration:
-
-```bash
-npm run migrate
-```
-
-This will transfer all invoices, line items, and receipt files to Supabase.
-
-### Step 5: Run Development Server
+### Step 4: Run Development Server
 
 ```bash
 npm run dev
@@ -150,6 +149,7 @@ invoice-tracker-web/
 │   ├── page.tsx                 # Dashboard (invoice list)
 │   └── globals.css              # Global styles
 ├── components/                  # React components
+│   ├── LineItemGrid.tsx         # Spreadsheet-style line item editor
 │   └── Navigation.tsx           # Sidebar navigation
 ├── lib/                         # Utilities and types
 │   ├── supabase/                # Supabase clients
@@ -157,11 +157,12 @@ invoice-tracker-web/
 │   │   └── server.ts            # Server client
 │   ├── types/                   # TypeScript types
 │   │   └── database.types.ts    # Database schema types
+│   ├── lineItems.ts             # Shared line item validation
+│   ├── settings.ts              # Feature settings (debt tracking)
 │   └── utils/                   # Helper functions
 │       ├── calculations.ts      # Invoice calculations
+│       ├── dates.ts             # Calendar-day helpers (no UTC drift)
 │       └── cn.ts                # Tailwind utilities
-├── scripts/                     # Migration and utility scripts
-│   └── migrate-data.ts          # SQLite → Supabase migration
 ├── supabase/                    # Supabase configuration
 │   └── migrations/              # SQL schema files
 │       └── 001_initial_schema.sql
@@ -223,11 +224,6 @@ See [supabase/migrations/001_initial_schema.sql](./supabase/migrations/001_initi
 - Verify `receipts` storage bucket exists in Supabase
 - Check that storage policies are configured
 - File size limit is 16 MB by default
-
-### Migration script fails
-- Update `SQLITE_DB_PATH` in `scripts/migrate-data.ts` to point to your database
-- Ensure the old `invoices.db` file exists
-- Verify Supabase credentials are correct in `.env.local`
 
 ### Can't log in
 - Ensure you created a user in Supabase Dashboard → Authentication → Users

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import ExcelJS from 'exceljs'
+import { cellToDateOnly } from '@/lib/utils/dates'
 
 /**
  * POST /api/invoices/import/excel
@@ -66,14 +67,14 @@ export async function POST(request: Request) {
           return
         }
 
-        // Format dates
-        const formattedInvoiceDate = invoiceDate instanceof Date
-          ? invoiceDate.toISOString().split('T')[0]
-          : new Date(invoiceDate.toString()).toISOString().split('T')[0]
+        // Format dates (calendar days, never shifted through a UTC round-trip)
+        const formattedInvoiceDate = cellToDateOnly(invoiceDate)
+        if (!formattedInvoiceDate) {
+          errors.push(`Row ${rowNumber}: Unreadable invoice date`)
+          return
+        }
 
-        const formattedLineItemDate = lineItemDate instanceof Date
-          ? lineItemDate.toISOString().split('T')[0]
-          : new Date(lineItemDate?.toString() || invoiceDate.toString()).toISOString().split('T')[0]
+        const formattedLineItemDate = cellToDateOnly(lineItemDate) || formattedInvoiceDate
 
         // Group by invoice (project_name + client + date)
         const invoiceKey = `${projectName}_${client}_${formattedInvoiceDate}`
