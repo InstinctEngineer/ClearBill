@@ -14,9 +14,15 @@ import {
   draftToPayload,
   draftTotal,
 } from '../lib/lineItemGrid'
+import { DEFAULT_LINE_ITEM_DEFAULTS } from '../lib/settings'
 
 const columns = GRID_COLUMNS
-const base = { ...emptyDraft('2026-03-01') }
+// A row seeded the way the grid seeds one, pinned to a fixed date.
+const FIXED_DATE_SEED = {
+  defaults: { ...DEFAULT_LINE_ITEM_DEFAULTS, dateMode: 'invoice' as const, quantity: '' },
+  invoiceDate: '2026-03-01',
+}
+const base = emptyDraft(FIXED_DATE_SEED.defaults, FIXED_DATE_SEED.invoiceDate)
 const columnIndex = (key: string) => columns.findIndex((column) => column.key === key)
 
 test('a full block from Excel maps onto every column', () => {
@@ -121,12 +127,14 @@ test('validation mirrors the server rules', () => {
   assert.equal(validateDraft({ ...base, description: 'x', quantity: '0', unit_rate: '0' }), null)
 })
 
-test('a blank row is one nobody has typed into', () => {
+test('a row with no description holds nothing worth saving', () => {
+  // Quantity and rate can be pre-filled from the Settings defaults, so only
+  // the description tells us whether the user has actually entered anything.
   assert.equal(isBlank(emptyDraft()), true)
-  assert.equal(isBlank({ ...emptyDraft(), description: 'x' }), false)
-  assert.equal(isBlank({ ...emptyDraft(), quantity: '1' }), false)
-  // Flipping a checkbox alone is not enough to make a row worth saving
-  assert.equal(isBlank({ ...emptyDraft(), client_pays: false }), true)
+  assert.equal(isBlank({ ...base, description: 'x' }), false)
+  assert.equal(isBlank({ ...base, quantity: '1', unit_rate: '75' }), true)
+  assert.equal(isBlank({ ...base, client_pays: false }), true)
+  assert.equal(isBlank({ ...base, description: '   ' }), true)
 })
 
 test('row totals apply the discount', () => {
@@ -190,4 +198,164 @@ test('every column reserves enough width for its own heading', () => {
 test('a date column fits a native date input and its picker icon', () => {
   const date = COLS.find((column) => column.kind === 'date')
   assert.ok(date && date.minPx >= 130, 'date inputs clip below ~130px')
+})
+
+// --- the entry row ---------------------------------------------------------
+// Line items list newest first, so the blank row you type the next entry into
+// sits at the TOP of the grid, not past the bottom of the list.
+
+import { buildRows, withEntryRow } from '../lib/lineItemGrid'
+import type { LineItem } from '../lib/types/database.types'
+
+const lineItem = (id: number, date: string): LineItem =>
+  ({
+    id,
+    invoice_id: 1,
+    description: `item ${id}`,
+    quantity: 1,
+    unit_rate: 75,
+    item_type: 'LABOR',
+    date,
+    discount_percentage: 0,
+    discount_reason: null,
+    applies_to_debt: false,
+    client_pays: true,
+    created_at: '2026-09-01T00:00:00Z',
+  }) as LineItem
+
+test('the blank entry row is first, above the saved items', () => {
+  const rows = buildRows([lineItem(1, '2026-09-29'), lineItem(2, '2026-09-16')])
+
+  assert.equal(rows.length, 3)
+  assert.equal(rows[0].id, null, 'the first row is the blank entry row')
+  assert.ok(isBlank(rows[0].draft))
+  assert.deepEqual(
+    rows.slice(1).map((row) => row.id),
+    [1, 2],
+    'saved items keep their order below it'
+  )
+})
+
+test('an empty invoice still offers an entry row', () => {
+  const rows = buildRows([])
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].id, null)
+})
+
+test('withEntryRow does not stack duplicate blanks', () => {
+  const once = withEntryRow(buildRows([lineItem(1, '2026-09-29')]))
+  const twice = withEntryRow(once)
+  assert.equal(twice.length, once.length)
+  assert.equal(twice, once, 'an untouched entry row is returned as-is')
+})
+
+test('withEntryRow restores the entry row once the old one is used', () => {
+  const rows = buildRows([lineItem(1, '2026-09-29')])
+  // The user typed into the entry row, so it is no longer blank.
+  const used = [
+    { ...rows[0], draft: { ...rows[0].draft, description: 'New work' }, status: 'dirty' as const },
+    ...rows.slice(1),
+  ]
+
+  const restored = withEntryRow(used)
+  assert.equal(restored.length, 3)
+  assert.equal(restored[0].id, null)
+  assert.ok(isBlank(restored[0].draft), 'a fresh blank goes back on top')
+  assert.equal(restored[1].draft.description, 'New work', 'the filled row stays put below it')
+})
+
+test('the entry row follows the invoice date when set to', () => {
+  const rows = buildRows([], FIXED_DATE_SEED)
+  assert.equal(rows[0].draft.date, '2026-03-01')
+})
+
+// --- settings-driven defaults ---------------------------------------------
+
+import { settingsFromRows, settingsToRows, SETTING_KEYS } from '../lib/settings'
+import { todayDateOnly } from '../lib/utils/dates'
+
+test('a new row dates itself today by default', () => {
+  const rows = buildRows([], { defaults: DEFAULT_LINE_ITEM_DEFAULTS })
+  assert.equal(rows[0].draft.date, todayDateOnly())
+})
+
+test("today's date wins even when an invoice date is supplied", () => {
+  const rows = buildRows([], {
+    defaults: DEFAULT_LINE_ITEM_DEFAULTS, // dateMode: 'today'
+    invoiceDate: '2020-01-01',
+  })
+  assert.equal(rows[0].draft.date, todayDateOnly())
+})
+
+test('a new row is pre-filled from the configured defaults', () => {
+  const draft = emptyDraft({
+    ...DEFAULT_LINE_ITEM_DEFAULTS,
+    description: 'Onsite labor',
+    itemType: 'HARDWARE',
+    quantity: '2',
+    unitRate: '75',
+    discountPercentage: '10',
+    discountReason: 'Volume',
+    clientPays: false,
+    appliesToDebt: true,
+  })
+
+  assert.equal(draft.description, 'Onsite labor')
+  assert.equal(draft.item_type, 'HARDWARE')
+  assert.equal(draft.quantity, '2')
+  assert.equal(draft.unit_rate, '75')
+  assert.equal(draft.discount_percentage, '10')
+  assert.equal(draft.discount_reason, 'Volume')
+  assert.equal(draft.client_pays, false)
+  assert.equal(draft.applies_to_debt, true)
+})
+
+test('a seeded description does not make entry rows stack up', () => {
+  // The entry row is recognised by its status, not by being empty, so a
+  // default description cannot trick withEntryRow into prepending forever.
+  const seed = { defaults: { ...DEFAULT_LINE_ITEM_DEFAULTS, description: 'Labor' } }
+  let rows = buildRows([], seed)
+  for (let i = 0; i < 5; i++) rows = withEntryRow(rows, seed)
+  assert.equal(rows.length, 1)
+})
+
+test('defaults survive a round trip through the settings table', () => {
+  const original = {
+    debtTrackingEnabled: false,
+    debtTotal: 0,
+    lineItemDefaults: {
+      ...DEFAULT_LINE_ITEM_DEFAULTS,
+      dateMode: 'invoice' as const,
+      itemType: 'OTHER' as const,
+      quantity: '3',
+      unitRate: '75',
+      discountReason: 'Retainer',
+      clientPays: false,
+    },
+  }
+
+  const restored = settingsFromRows(settingsToRows(original))
+  assert.deepEqual(restored.lineItemDefaults, original.lineItemDefaults)
+})
+
+test('a junk stored default falls back instead of breaking the grid', () => {
+  const restored = settingsFromRows([
+    { key: SETTING_KEYS.quantity, value: 'not a number' },
+    { key: SETTING_KEYS.itemType, value: 'NONSENSE' },
+    { key: SETTING_KEYS.dateMode, value: 'whenever' },
+  ])
+
+  assert.equal(restored.lineItemDefaults.quantity, DEFAULT_LINE_ITEM_DEFAULTS.quantity)
+  assert.equal(restored.lineItemDefaults.itemType, 'LABOR')
+  assert.equal(restored.lineItemDefaults.dateMode, 'today')
+})
+
+test('an empty stored default is kept, not treated as missing', () => {
+  const restored = settingsFromRows([{ key: SETTING_KEYS.quantity, value: '' }])
+  assert.equal(restored.lineItemDefaults.quantity, '', 'a cleared field stays cleared')
+})
+
+test('a lowercase stored item type is accepted', () => {
+  const restored = settingsFromRows([{ key: SETTING_KEYS.itemType, value: 'hardware' }])
+  assert.equal(restored.lineItemDefaults.itemType, 'HARDWARE')
 })
