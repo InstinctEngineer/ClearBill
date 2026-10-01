@@ -6,6 +6,7 @@
  */
 import type { LineItem } from '@/lib/types/database.types'
 import { ITEM_TYPES, type ItemType } from '@/lib/lineItems'
+import { DEFAULT_LINE_ITEM_DEFAULTS, type LineItemDefaults } from '@/lib/settings'
 import { calculateDiscountedRate } from '@/lib/utils/calculations'
 import { todayDateOnly, toDateOnly, parseDateOnly } from '@/lib/utils/dates'
 
@@ -84,17 +85,27 @@ let keyCounter = 0
 /** Stable React key for a row, independent of its database id. */
 export const nextKey = () => `row-${++keyCounter}`
 
-export function emptyDraft(defaultDate?: string): RowDraft {
+/**
+ * What a fresh row starts as.
+ *
+ * `defaults` comes from the Settings page, so the fields filled in the same
+ * way every time arrive pre-filled. `invoiceDate` is only consulted when the
+ * date default is set to follow the invoice rather than today.
+ */
+export function emptyDraft(
+  defaults: LineItemDefaults = DEFAULT_LINE_ITEM_DEFAULTS,
+  invoiceDate?: string
+): RowDraft {
   return {
-    date: defaultDate || todayDateOnly(),
-    description: '',
-    item_type: 'LABOR',
-    quantity: '',
-    unit_rate: '',
-    discount_percentage: '',
-    discount_reason: '',
-    client_pays: true,
-    applies_to_debt: false,
+    date: defaults.dateMode === 'invoice' && invoiceDate ? invoiceDate : todayDateOnly(),
+    description: defaults.description,
+    item_type: defaults.itemType,
+    quantity: defaults.quantity,
+    unit_rate: defaults.unitRate,
+    discount_percentage: defaults.discountPercentage,
+    discount_reason: defaults.discountReason,
+    client_pays: defaults.clientPays,
+    applies_to_debt: defaults.appliesToDebt,
   }
 }
 
@@ -112,13 +123,16 @@ export function draftFromLineItem(item: LineItem): RowDraft {
   }
 }
 
-/** A row the user has not touched yet; never saved, never validated. */
+/**
+ * True when a row holds nothing worth saving.
+ *
+ * Quantity and rate can arrive pre-filled from the Settings defaults, so they
+ * say nothing about whether the user has entered anything. Description is the
+ * one field they must supply and the one validation always demands, which
+ * makes it the only reliable signal.
+ */
 export function isBlank(draft: RowDraft): boolean {
-  return (
-    draft.description.trim() === '' &&
-    draft.quantity.trim() === '' &&
-    draft.unit_rate.trim() === ''
-  )
+  return draft.description.trim() === ''
 }
 
 /** Running total for a draft, so the grid can show it before it is saved. */
@@ -220,15 +234,24 @@ function applyCell(draft: RowDraft, key: ColumnKey, kind: ColumnKind, raw: strin
 }
 
 
+/** How a fresh entry row should be pre-filled. */
+export interface EntryRowSeed {
+  defaults: LineItemDefaults
+  /** Used only when the date default follows the invoice. */
+  invoiceDate?: string
+}
+
+export const DEFAULT_SEED: EntryRowSeed = { defaults: DEFAULT_LINE_ITEM_DEFAULTS }
+
 /** Build the initial row list from the server's line items. */
-export function buildRows(lineItems: LineItem[], defaultDate?: string): GridRow[] {
+export function buildRows(lineItems: LineItem[], seed: EntryRowSeed = DEFAULT_SEED): GridRow[] {
   const rows: GridRow[] = lineItems.map((item) => ({
     key: nextKey(),
     id: item.id,
     draft: draftFromLineItem(item),
     status: 'clean',
   }))
-  return withEntryRow(rows, defaultDate)
+  return withEntryRow(rows, seed)
 }
 
 /**
@@ -241,8 +264,19 @@ export function buildRows(lineItems: LineItem[], defaultDate?: string): GridRow[
  * it is being typed into: inserting above a row in progress shunts it down a
  * line mid-keystroke.
  */
-export function withEntryRow(rows: GridRow[], defaultDate?: string): GridRow[] {
+export function withEntryRow(rows: GridRow[], seed: EntryRowSeed = DEFAULT_SEED): GridRow[] {
+  // An untouched row is identified by its status, not by being empty: with
+  // defaults in play a fresh row can arrive already carrying a description,
+  // and an emptiness test would then stack a new entry row on every call.
   const first = rows[0]
-  if (first && first.id === null && isBlank(first.draft)) return rows
-  return [{ key: nextKey(), id: null, draft: emptyDraft(defaultDate), status: 'clean' }, ...rows]
+  if (first && first.id === null && first.status === 'clean') return rows
+  return [
+    {
+      key: nextKey(),
+      id: null,
+      draft: emptyDraft(seed.defaults, seed.invoiceDate),
+      status: 'clean',
+    },
+    ...rows,
+  ]
 }

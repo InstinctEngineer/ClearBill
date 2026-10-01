@@ -559,7 +559,8 @@ export default function InvoiceDetailPage({ params }: { params: Promise<{ id: st
             <LineItemGrid
               invoiceId={invoice.id}
               lineItems={invoice.line_items}
-              defaultDate={invoice.date}
+              invoiceDate={invoice.date}
+              defaults={settings.lineItemDefaults}
               showDebtColumn={settings.debtTrackingEnabled}
               onChanged={fetchInvoice}
             />

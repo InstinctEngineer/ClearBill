@@ -10,6 +10,7 @@ import {
   validateDraft,
   withEntryRow,
   type ColumnKey,
+  type EntryRowSeed,
   type GridRow,
   type RowDraft,
   type RowStatus,
@@ -21,10 +22,14 @@ import {
  */
 export function useLineItemGrid(
   lineItems: LineItem[],
-  defaultDate: string | undefined,
+  seed: EntryRowSeed,
   onChanged: () => void | Promise<void>
 ) {
-  const [rows, setRows] = useState<GridRow[]>(() => buildRows(lineItems, defaultDate))
+  const [rows, setRows] = useState<GridRow[]>(() => buildRows(lineItems, seed))
+
+  // Read inside callbacks so a settings change does not re-create every one.
+  const seedRef = useRef(seed)
+  seedRef.current = seed
   const [banner, setBanner] = useState<string | null>(null)
 
   // Reads of the row list inside async handlers must see the latest state, not
@@ -37,14 +42,11 @@ export function useLineItemGrid(
   const inFlight = useRef(new Set<string>())
 
   /** Rebuild from the server's copy, discarding local drafts. */
-  const reset = useCallback(
-    (items: LineItem[]) => {
-      const built = buildRows(items, defaultDate)
-      rowsRef.current = built
-      setRows(built)
-    },
-    [defaultDate]
-  )
+  const reset = useCallback((items: LineItem[]) => {
+    const built = buildRows(items, seedRef.current)
+    rowsRef.current = built
+    setRows(built)
+  }, [])
 
   const patchRow = useCallback((key: string, patch: Partial<GridRow>) => {
     setRows((current) => {
@@ -119,7 +121,7 @@ export function useLineItemGrid(
         // The row just filled in may have been the entry row; put a fresh one
         // back at the top now that the user has finished with this one.
         setRows((current) => {
-          const next = withEntryRow(current, defaultDate)
+          const next = withEntryRow(current, seedRef.current)
           rowsRef.current = next
           return next
         })
@@ -133,7 +135,7 @@ export function useLineItemGrid(
         inFlight.current.delete(key)
       }
     },
-    [patchRow, onChanged, defaultDate]
+    [patchRow, onChanged]
   )
 
   const removeRow = useCallback(
@@ -141,13 +143,13 @@ export function useLineItemGrid(
       setRows((current) => {
         const next = withEntryRow(
           current.filter((candidate) => candidate.key !== key),
-          defaultDate
+          seedRef.current
         )
         rowsRef.current = next
         return next
       })
     },
-    [defaultDate]
+    []
   )
 
   const deleteRow = useCallback(
@@ -204,7 +206,7 @@ export function useLineItemGrid(
         const next = [...current]
         next[index] = { ...next[index], draft: first, status: 'dirty', error: undefined }
         next.splice(index + 1, 0, ...appended)
-        const grown = withEntryRow(next, defaultDate)
+        const grown = withEntryRow(next, seedRef.current)
         rowsRef.current = grown
         return grown
       })
@@ -259,7 +261,7 @@ export function useLineItemGrid(
         appended.forEach((row) => inFlight.current.delete(row.key))
       }
     },
-    [patchRow, onChanged, defaultDate]
+    [patchRow, onChanged]
   )
 
   const unsavedCount = useMemo(

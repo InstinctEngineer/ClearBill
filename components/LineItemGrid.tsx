@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2, AlertCircle, Check, Info } from 'lucide-react'
 import type { LineItem } from '@/lib/types/database.types'
 import { ITEM_TYPES } from '@/lib/lineItems'
@@ -16,13 +16,16 @@ import {
   type GridColumn,
   type GridRow,
 } from '@/lib/lineItemGrid'
+import type { LineItemDefaults } from '@/lib/settings'
 import { useLineItemGrid } from '@/lib/hooks/useLineItemGrid'
 
 interface Props {
   invoiceId: number
   lineItems: LineItem[]
-  /** Date used for new rows, normally the invoice date. */
-  defaultDate?: string
+  /** Invoice's own date, used when the date default is set to follow it. */
+  invoiceDate?: string
+  /** What a fresh row is pre-filled with, from the Settings page. */
+  defaults: LineItemDefaults
   /** Show the "to debt" column. Driven by the debt tracking setting. */
   showDebtColumn: boolean
   /** Called after any successful write so the parent can refetch totals. */
@@ -40,11 +43,13 @@ interface Props {
 export default function LineItemGrid({
   invoiceId,
   lineItems,
-  defaultDate,
+  invoiceDate,
+  defaults,
   showDebtColumn,
   onChanged,
 }: Props) {
-  const grid = useLineItemGrid(lineItems, defaultDate, onChanged)
+  const seed = useMemo(() => ({ defaults, invoiceDate }), [defaults, invoiceDate])
+  const grid = useLineItemGrid(lineItems, seed, onChanged)
   const { rows, reset, editCell, commitRow, deleteRow, pasteRows } = grid
   const containerRef = useRef<HTMLDivElement>(null)
   const [showHelp, setShowHelp] = useState(false)
@@ -127,7 +132,7 @@ export default function LineItemGrid({
     if (!text || (!text.includes('\t') && !text.includes('\n'))) return // ordinary paste
 
     event.preventDefault()
-    const base = isBlank(row.draft) ? emptyDraft(defaultDate) : row.draft
+    const base = isBlank(row.draft) ? emptyDraft(defaults, invoiceDate) : row.draft
     const drafts = parseClipboard(text, columns, columnIndex, base)
     void pasteRows(row.key, drafts, invoiceId)
   }
