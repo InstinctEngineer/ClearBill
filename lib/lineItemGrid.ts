@@ -228,12 +228,21 @@ export function buildRows(lineItems: LineItem[], defaultDate?: string): GridRow[
     draft: draftFromLineItem(item),
     status: 'clean',
   }))
-  return withTrailingBlank(rows, defaultDate)
+  return withEntryRow(rows, defaultDate)
 }
 
-/** Keep exactly one blank row at the bottom, the way a spreadsheet does. */
-export function withTrailingBlank(rows: GridRow[], defaultDate?: string): GridRow[] {
-  const last = rows[rows.length - 1]
-  if (last && last.id === null && isBlank(last.draft)) return rows
-  return [...rows, { key: nextKey(), id: null, draft: emptyDraft(defaultDate), status: 'clean' }]
+/**
+ * Keep exactly one blank entry row at the TOP of the grid.
+ *
+ * Line items are listed newest first, so the row you are about to add belongs
+ * at the top next to the most recent work, not past the bottom of the list.
+ *
+ * Callers add the replacement row once the current one is saved, never while
+ * it is being typed into: inserting above a row in progress shunts it down a
+ * line mid-keystroke.
+ */
+export function withEntryRow(rows: GridRow[], defaultDate?: string): GridRow[] {
+  const first = rows[0]
+  if (first && first.id === null && isBlank(first.draft)) return rows
+  return [{ key: nextKey(), id: null, draft: emptyDraft(defaultDate), status: 'clean' }, ...rows]
 }

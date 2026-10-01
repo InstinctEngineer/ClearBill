@@ -158,7 +158,7 @@ export default function LineItemGrid({
           <p><strong>Type straight into any cell.</strong> Each row saves by itself once you move off it.</p>
           <p><strong>Tab</strong> moves across, <strong>Enter</strong> and the <strong>arrow keys</strong> move down and up, <strong>Esc</strong> leaves the cell.</p>
           <p><strong>Paste a block from Excel</strong> into any cell and it fills that many rows, starting at the column you pasted into.</p>
-          <p>The empty row at the bottom is always ready for the next entry.</p>
+          <p>The empty row at the top is always ready for the next entry.</p>
         </div>
       )}
 

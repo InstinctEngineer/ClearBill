@@ -191,3 +191,72 @@ test('a date column fits a native date input and its picker icon', () => {
   const date = COLS.find((column) => column.kind === 'date')
   assert.ok(date && date.minPx >= 130, 'date inputs clip below ~130px')
 })
+
+// --- the entry row ---------------------------------------------------------
+// Line items list newest first, so the blank row you type the next entry into
+// sits at the TOP of the grid, not past the bottom of the list.
+
+import { buildRows, withEntryRow } from '../lib/lineItemGrid'
+import type { LineItem } from '../lib/types/database.types'
+
+const lineItem = (id: number, date: string): LineItem =>
+  ({
+    id,
+    invoice_id: 1,
+    description: `item ${id}`,
+    quantity: 1,
+    unit_rate: 75,
+    item_type: 'LABOR',
+    date,
+    discount_percentage: 0,
+    discount_reason: null,
+    applies_to_debt: false,
+    client_pays: true,
+    created_at: '2026-09-01T00:00:00Z',
+  }) as LineItem
+
+test('the blank entry row is first, above the saved items', () => {
+  const rows = buildRows([lineItem(1, '2026-09-29'), lineItem(2, '2026-09-16')])
+
+  assert.equal(rows.length, 3)
+  assert.equal(rows[0].id, null, 'the first row is the blank entry row')
+  assert.ok(isBlank(rows[0].draft))
+  assert.deepEqual(
+    rows.slice(1).map((row) => row.id),
+    [1, 2],
+    'saved items keep their order below it'
+  )
+})
+
+test('an empty invoice still offers an entry row', () => {
+  const rows = buildRows([])
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].id, null)
+})
+
+test('withEntryRow does not stack duplicate blanks', () => {
+  const once = withEntryRow(buildRows([lineItem(1, '2026-09-29')]))
+  const twice = withEntryRow(once)
+  assert.equal(twice.length, once.length)
+  assert.equal(twice, once, 'an untouched entry row is returned as-is')
+})
+
+test('withEntryRow restores the entry row once the old one is used', () => {
+  const rows = buildRows([lineItem(1, '2026-09-29')])
+  // The user typed into the entry row, so it is no longer blank.
+  const used = [
+    { ...rows[0], draft: { ...rows[0].draft, description: 'New work' }, status: 'dirty' as const },
+    ...rows.slice(1),
+  ]
+
+  const restored = withEntryRow(used)
+  assert.equal(restored.length, 3)
+  assert.equal(restored[0].id, null)
+  assert.ok(isBlank(restored[0].draft), 'a fresh blank goes back on top')
+  assert.equal(restored[1].draft.description, 'New work', 'the filled row stays put below it')
+})
+
+test('the entry row defaults to the date it is given', () => {
+  const rows = buildRows([], '2026-09-01')
+  assert.equal(rows[0].draft.date, '2026-09-01')
+})

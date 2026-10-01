@@ -8,7 +8,7 @@ import {
   isBlank,
   nextKey,
   validateDraft,
-  withTrailingBlank,
+  withEntryRow,
   type ColumnKey,
   type GridRow,
   type RowDraft,
@@ -54,27 +54,33 @@ export function useLineItemGrid(
     })
   }, [])
 
-  /** Edit one cell, marking the row dirty and growing the blank tail row. */
-  const editCell = useCallback(
-    (key: string, column: ColumnKey, value: string | boolean) => {
-      setRows((current) => {
-        const next = current.map((row) =>
-          row.key === key
-            ? {
-                ...row,
-                draft: { ...row.draft, [column]: value } as RowDraft,
-                status: 'dirty' as RowStatus,
-                error: undefined,
-              }
-            : row
-        )
-        const grown = withTrailingBlank(next, defaultDate)
-        rowsRef.current = grown
-        return grown
+  /**
+   * Edit one cell and mark the row dirty.
+   *
+   * No replacement entry row is added here. The entry row sits at the top, so
+   * adding one the moment you start typing would push the row you are typing
+   * in down a line. commitRow adds it once the row is saved instead.
+   */
+  const editCell = useCallback((key: string, column: ColumnKey, value: string | boolean) => {
+    setRows((current) => {
+      const next = current.map((row) => {
+        if (row.key !== key) return row
+        const draft = { ...row.draft, [column]: value } as RowDraft
+
+        // Clearing an unsaved row back to empty makes it the entry row again,
+        // so it should not keep nagging about the validation it just failed.
+        const emptied = row.id === null && isBlank(draft)
+        return {
+          ...row,
+          draft,
+          status: (emptied ? 'clean' : 'dirty') as RowStatus,
+          error: undefined,
+        }
       })
-    },
-    [defaultDate]
-  )
+      rowsRef.current = next
+      return next
+    })
+  }, [])
 
   /** Persist one row if it is dirty and complete. Called when focus leaves it. */
   const commitRow = useCallback(
@@ -110,6 +116,13 @@ export function useLineItemGrid(
         }
         const saved: LineItem = await res.json()
         patchRow(key, { id: saved.id, status: 'clean', error: undefined })
+        // The row just filled in may have been the entry row; put a fresh one
+        // back at the top now that the user has finished with this one.
+        setRows((current) => {
+          const next = withEntryRow(current, defaultDate)
+          rowsRef.current = next
+          return next
+        })
         await onChanged()
       } catch (err) {
         patchRow(key, {
@@ -120,13 +133,13 @@ export function useLineItemGrid(
         inFlight.current.delete(key)
       }
     },
-    [patchRow, onChanged]
+    [patchRow, onChanged, defaultDate]
   )
 
   const removeRow = useCallback(
     (key: string) => {
       setRows((current) => {
-        const next = withTrailingBlank(
+        const next = withEntryRow(
           current.filter((candidate) => candidate.key !== key),
           defaultDate
         )
@@ -191,7 +204,7 @@ export function useLineItemGrid(
         const next = [...current]
         next[index] = { ...next[index], draft: first, status: 'dirty', error: undefined }
         next.splice(index + 1, 0, ...appended)
-        const grown = withTrailingBlank(next, defaultDate)
+        const grown = withEntryRow(next, defaultDate)
         rowsRef.current = grown
         return grown
       })
