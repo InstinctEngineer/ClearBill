@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Store, Calendar, DollarSign, Receipt as ReceiptIcon, AlertCircle, Loader2, Trash2, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import { ChevronDown, ChevronRight, Store, Calendar, DollarSign, Receipt as ReceiptIcon, AlertCircle, Loader2, Trash2, CheckCircle2, XCircle, Clock, Download, ExternalLink } from 'lucide-react'
 import type { Receipt, ReceiptOCRData } from '@/lib/types/database.types'
 import { formatCurrency } from '@/lib/utils/calculations'
 import { useReceiptOCR } from '@/lib/hooks/useReceiptOCR'
 import { createClient } from '@/lib/supabase/client'
+import { downloadReceipt } from '@/lib/receiptFiles'
 
 interface ReceiptDetailsProps {
   receipt: Receipt
@@ -15,24 +16,53 @@ interface ReceiptDetailsProps {
 
 export default function ReceiptDetails({ receipt, onRefresh, onDelete }: ReceiptDetailsProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [fetchingFile, setFetchingFile] = useState<'open' | 'download' | null>(null)
   const { processing, progress, error: ocrError, processReceipt } = useReceiptOCR()
+
+  /** Signed, short-lived link to the stored file. */
+  const signedUrl = async (): Promise<string | null> => {
+    const supabase = createClient()
+    const { data, error } = await supabase.storage
+      .from('receipts')
+      .createSignedUrl(receipt.storage_path, 3600)
+    if (error || !data?.signedUrl) {
+      console.error('Failed to get receipt URL:', error)
+      return null
+    }
+    return data.signedUrl
+  }
+
+  const handleOpen = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setFetchingFile('open')
+    try {
+      const url = await signedUrl()
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+    } finally {
+      setFetchingFile(null)
+    }
+  }
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setFetchingFile('download')
+    try {
+      const url = await signedUrl()
+      if (url) await downloadReceipt(url, receipt.filename)
+    } catch (err) {
+      console.error('Error downloading receipt:', err)
+    } finally {
+      setFetchingFile(null)
+    }
+  }
 
   const handleProcessOCR = async () => {
     try {
-      // Get signed URL for the receipt image
-      const supabase = createClient()
-      const { data: urlData, error: urlError } = await supabase
-        .storage
-        .from('receipts')
-        .createSignedUrl(receipt.storage_path, 3600) // 1 hour expiry
-
-      if (urlError || !urlData?.signedUrl) {
-        console.error('Failed to get receipt URL:', urlError)
-        return
-      }
+      const url = await signedUrl()
+      if (!url) return
 
       // Process the receipt
-      await processReceipt(urlData.signedUrl, receipt.id)
+      await processReceipt(url, receipt.id)
 
       // Refresh the receipt data to show results
       if (onRefresh) {
@@ -94,6 +124,24 @@ export default function ReceiptDetails({ receipt, onRefresh, onDelete }: Receipt
               <Clock className="h-4 w-4 text-gray-400 dark:text-gray-500" />
             </div>
           )}
+          <button
+            onClick={handleOpen}
+            disabled={fetchingFile !== null}
+            className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:text-gray-400 dark:hover:text-blue-400 dark:hover:bg-blue-900/20 rounded transition-colors disabled:opacity-50"
+            title="Open receipt"
+          >
+            {fetchingFile === 'open' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+            <span className="sr-only">Open receipt</span>
+          </button>
+          <button
+            onClick={handleDownload}
+            disabled={fetchingFile !== null}
+            className="p-1 text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:text-gray-400 dark:hover:text-blue-400 dark:hover:bg-blue-900/20 rounded transition-colors disabled:opacity-50"
+            title="Download receipt"
+          >
+            {fetchingFile === 'download' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            <span className="sr-only">Download receipt</span>
+          </button>
           {onDelete && (
             <button
               onClick={handleDelete}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Trash2, AlertCircle, Check, Info } from 'lucide-react'
 import type { LineItem } from '@/lib/types/database.types'
 import { ITEM_TYPES } from '@/lib/lineItems'
@@ -54,9 +54,13 @@ export default function LineItemGrid({
   const containerRef = useRef<HTMLDivElement>(null)
   const [showHelp, setShowHelp] = useState(false)
 
-  // Latest rows, readable from effects without making them re-run on every keystroke
+  // Latest rows, readable from effects without making them re-run on every
+  // keystroke. Synced in a layout effect: writing a ref during render is a
+  // React rule violation and lint rejects it.
   const rowsRef = useRef(rows)
-  rowsRef.current = rows
+  useLayoutEffect(() => {
+    rowsRef.current = rows
+  })
 
   const columns = GRID_COLUMNS.filter(
     (column) => column.feature !== 'debt' || showDebtColumn
