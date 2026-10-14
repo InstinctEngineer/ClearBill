@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { LineItem } from '@/lib/types/database.types'
 import {
   buildRows,
@@ -29,14 +29,18 @@ export function useLineItemGrid(
 
   // Read inside callbacks so a settings change does not re-create every one.
   const seedRef = useRef(seed)
-  seedRef.current = seed
+  useLayoutEffect(() => {
+    seedRef.current = seed
+  }, [seed])
   const [banner, setBanner] = useState<string | null>(null)
 
   // Reads of the row list inside async handlers must see the latest state, not
   // the snapshot the handler closed over; a stale read would re-POST a row that
   // is already saving and duplicate it on the invoice.
   const rowsRef = useRef(rows)
-  rowsRef.current = rows
+  useLayoutEffect(() => {
+    rowsRef.current = rows
+  }, [rows])
 
   // Rows with a request in flight, so a second blur cannot start a second save.
   const inFlight = useRef(new Set<string>())

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import {
   FileText,
   BarChart3,
+  Receipt,
   Settings,
   LogOut,
   Menu,
@@ -21,6 +22,7 @@ export default function Navigation() {
   const navItems = [
     { href: '/', label: 'Invoices', icon: FileText },
     { href: '/summary', label: 'Summary', icon: BarChart3 },
+    { href: '/receipts', label: 'Receipts', icon: Receipt },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
 
