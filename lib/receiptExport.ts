@@ -10,7 +10,8 @@ import { yearOfDateOnly } from '@/lib/utils/dates'
 /** One receipt as the Receipts page and the export work with it. */
 export interface ReceiptListItem {
   id: number
-  invoiceId: number
+  /** Null for an expense recorded without an invoice. */
+  invoiceId: number | null
   invoiceName: string
   client: string
   /** The invoice's date, 'YYYY-MM-DD'. Decides the receipt's year. */
@@ -18,10 +19,18 @@ export interface ReceiptListItem {
   filename: string
   storagePath: string
   uploadedAt: string
-  /** From OCR, when it has been run. */
+  /** Vendor and date as entered, or as OCR read them. */
   merchant: string | null
   receiptDate: string | null
+  /** Amount as entered, or as OCR read it. */
   total: number | null
+  /** The expense ledger fields; absent on a bare file listing. */
+  amount?: number | null
+  expenseDate?: string | null
+  category?: string | null
+  vendor?: string | null
+  notes?: string | null
+  reimbursed?: boolean
 }
 
 /**
@@ -64,7 +73,8 @@ export function zipEntryNames(receipts: ReceiptListItem[]): Map<number, string> 
   const taken = new Set<string>()
 
   for (const receipt of receipts) {
-    const base = `${receipt.invoiceDate}_invoice-${receipt.invoiceId}_${safeFileName(receipt.filename)}`
+    const origin = receipt.invoiceId === null ? 'no-invoice' : `invoice-${receipt.invoiceId}`
+    const base = `${receipt.invoiceDate}_${origin}_${safeFileName(receipt.filename)}`
     let name = base
     for (let n = 2; taken.has(name.toLowerCase()); n++) {
       name = withSuffix(base, `-${n}`)
@@ -107,7 +117,7 @@ const INDEX_COLUMNS = [
 export function buildIndexCsv(receipts: ReceiptListItem[], entryNames: Map<number, string>): string {
   const rows = receipts.map((receipt) => [
     entryNames.get(receipt.id) ?? receipt.filename,
-    String(receipt.invoiceId),
+    receipt.invoiceId === null ? '' : String(receipt.invoiceId),
     receipt.invoiceName,
     receipt.invoiceDate,
     receipt.client,

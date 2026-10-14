@@ -75,6 +75,11 @@ test('zip entries are dated, stamped with the invoice, and never collide', () =>
   assert.equal(new Set(names.values()).size, 3)
 })
 
+test('an expense with no invoice gets a name that says so', () => {
+  const names = zipEntryNames([receipt({ id: 9, invoiceId: null, invoiceDate: '2025-03-03', filename: 'phone-bill.pdf' })])
+  assert.equal(names.get(9), '2025-03-03_no-invoice_phone-bill.pdf')
+})
+
 test('collision check ignores case, since the ZIP may land on a case-insensitive disk', () => {
   const list = [
     receipt({ id: 1, filename: 'Receipt.pdf' }),

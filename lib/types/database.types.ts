@@ -98,32 +98,71 @@ export interface Database {
       receipts: {
         Row: {
           id: number
-          invoice_id: number
-          filename: string
-          storage_path: string
+          /** Null for an expense that was never billed through an invoice. */
+          invoice_id: number | null
+          /** Null for an expense recorded without a file. */
+          filename: string | null
+          storage_path: string | null
           uploaded_at: string
           ocr_processed: boolean
           ocr_data: ReceiptOCRData | null
           ocr_error: string | null
+          amount: number | null
+          expense_date: string | null
+          category: string | null
+          vendor: string | null
+          notes: string | null
+          reimbursed: boolean
         }
         Insert: {
           id?: number
-          invoice_id: number
-          filename: string
-          storage_path: string
+          invoice_id?: number | null
+          filename?: string | null
+          storage_path?: string | null
           uploaded_at?: string
           ocr_processed?: boolean
           ocr_data?: ReceiptOCRData | null
           ocr_error?: string | null
+          amount?: number | null
+          expense_date?: string | null
+          category?: string | null
+          vendor?: string | null
+          notes?: string | null
+          reimbursed?: boolean
         }
         Update: {
           id?: number
-          invoice_id?: number
-          filename?: string
-          storage_path?: string
+          invoice_id?: number | null
+          filename?: string | null
+          storage_path?: string | null
           ocr_processed?: boolean
           ocr_data?: ReceiptOCRData | null
           ocr_error?: string | null
+          amount?: number | null
+          expense_date?: string | null
+          category?: string | null
+          vendor?: string | null
+          notes?: string | null
+          reimbursed?: boolean
+        }
+      }
+      tax_years: {
+        Row: {
+          year: number
+          form_1099_nec: number | null
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          year: number
+          form_1099_nec?: number | null
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          form_1099_nec?: number | null
+          notes?: string | null
+          updated_at?: string
         }
       }
       settings: {
@@ -166,6 +205,7 @@ export type Invoice = Database['public']['Tables']['invoices']['Row']
 export type LineItem = Database['public']['Tables']['line_items']['Row']
 export type Receipt = Database['public']['Tables']['receipts']['Row']
 export type Setting = Database['public']['Tables']['settings']['Row']
+export type TaxYear = Database['public']['Tables']['tax_years']['Row']
 
 export type InvoiceInsert = Database['public']['Tables']['invoices']['Insert']
 export type LineItemInsert = Database['public']['Tables']['line_items']['Insert']
