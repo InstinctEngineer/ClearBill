@@ -7,6 +7,7 @@ import {
   FileText,
   BarChart3,
   Receipt,
+  Landmark,
   Settings,
   LogOut,
   Menu,
@@ -23,6 +24,7 @@ export default function Navigation() {
     { href: '/', label: 'Invoices', icon: FileText },
     { href: '/summary', label: 'Summary', icon: BarChart3 },
     { href: '/receipts', label: 'Receipts', icon: Receipt },
+    { href: '/tax', label: 'Tax', icon: Landmark },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
 

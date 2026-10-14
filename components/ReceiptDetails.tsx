@@ -21,6 +21,7 @@ export default function ReceiptDetails({ receipt, onRefresh, onDelete }: Receipt
 
   /** Signed, short-lived link to the stored file. */
   const signedUrl = async (): Promise<string | null> => {
+    if (!receipt.storage_path) return null
     const supabase = createClient()
     const { data, error } = await supabase.storage
       .from('receipts')
@@ -48,7 +49,7 @@ export default function ReceiptDetails({ receipt, onRefresh, onDelete }: Receipt
     setFetchingFile('download')
     try {
       const url = await signedUrl()
-      if (url) await downloadReceipt(url, receipt.filename)
+      if (url) await downloadReceipt(url, receipt.filename ?? 'receipt')
     } catch (err) {
       console.error('Error downloading receipt:', err)
     } finally {
@@ -98,7 +99,7 @@ export default function ReceiptDetails({ receipt, onRefresh, onDelete }: Receipt
           )}
           <ReceiptIcon className="h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
           <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-            {receipt.filename}
+            {receipt.filename ?? receipt.vendor ?? 'Expense'}
           </span>
         </button>
 
