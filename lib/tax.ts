@@ -442,7 +442,7 @@ export function availableTaxYears(invoices: TaxInvoice[], expenses: TaxExpense[]
 const grossOf = (item: TaxLineItem) => item.quantity * item.unit_rate
 const discountOf = (item: TaxLineItem) => grossOf(item) - calculateLineItemTotal(item)
 
-function sum<T>(rows: T[], pick: (row: T) => number): number {
+export function sum<T>(rows: T[], pick: (row: T) => number): number {
   return rows.reduce((acc, row) => acc + pick(row), 0)
 }
 
@@ -450,11 +450,12 @@ export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100
 }
 
-function money(value: number): string {
+/** A dollar figure for a sentence: $1,234.50. */
+export function money(value: number): string {
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 }
 
-function groupBy<T, K>(rows: T[], key: (row: T) => K): Map<K, T[]> {
+export function groupBy<T, K>(rows: T[], key: (row: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>()
   for (const row of rows) {
     const k = key(row)
@@ -466,6 +467,8 @@ function groupBy<T, K>(rows: T[], key: (row: T) => K): Map<K, T[]> {
 }
 
 const SEVERITY_ORDER: Record<FlagSeverity, number> = { action: 0, review: 1, info: 2 }
-function sortFlags(flags: TaxFlag[]): TaxFlag[] {
+
+/** Most urgent first, so what blocks filing is read before what is merely worth knowing. */
+export function sortFlags<T extends { severity: FlagSeverity }>(flags: T[]): T[] {
   return [...flags].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
 }

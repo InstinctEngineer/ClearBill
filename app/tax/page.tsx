@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import Navigation from '@/components/Navigation'
+import { CheckCircle2, ChevronDown, ChevronRight, FolderArchive, Loader2, Save } from 'lucide-react'
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, FolderArchive, Info, Loader2, Save,
-} from 'lucide-react'
+  Badge, Empty, FlagGroups, Money, Notice, Row, Section, Stat, Table, YearTabs,
+} from '@/components/ReportUI'
 import { formatCurrency, formatDate } from '@/lib/utils/calculations'
 import type { TaxFlag, TaxYearReport } from '@/lib/tax'
 import { buildTaxPackageFiles } from '@/lib/taxExport'
@@ -110,12 +111,6 @@ export default function TaxPage() {
   }
 
   const report = data?.report
-  const flagsBy = useMemo(() => {
-    const groups: Record<TaxFlag['severity'], TaxFlag[]> = { action: [], review: [], info: [] }
-    for (const flag of report?.flags ?? []) groups[flag.severity].push(flag)
-    return groups
-  }, [report])
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Navigation />
@@ -144,26 +139,7 @@ export default function TaxPage() {
             )}
           </div>
 
-          {data && data.years.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-6" role="tablist" aria-label="Tax year">
-              {data.years.map((candidate) => (
-                <button
-                  key={candidate}
-                  role="tab"
-                  aria-selected={candidate === year}
-                  type="button"
-                  onClick={() => void load(candidate)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
-                    candidate === year
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  {candidate}
-                </button>
-              ))}
-            </div>
-          )}
+          {data && <YearTabs years={data.years} selected={year} onSelect={(y) => void load(y)} label="Tax year" />}
 
           {error && <Notice tone="error">{error}</Notice>}
           {zipNotice && <Notice tone="info" onDismiss={() => setZipNotice(null)}>{zipNotice}</Notice>}
@@ -237,11 +213,9 @@ export default function TaxPage() {
               </Section>
 
               {/* Flags */}
-              {(flagsBy.action.length + flagsBy.review.length + flagsBy.info.length) > 0 && (
+              {report.flags.length > 0 && (
                 <Section title="Before you file">
-                  <FlagList title="Fix" tone="bad" flags={flagsBy.action} />
-                  <FlagList title="Check with your preparer" tone="warn" flags={flagsBy.review} />
-                  <FlagList title="Good to know" tone="info" flags={flagsBy.info} />
+                  <FlagGroups flags={report.flags} action={flagLink} />
                 </Section>
               )}
 
@@ -367,124 +341,15 @@ export default function TaxPage() {
   )
 }
 
-// ------------------------------------------------------------ small parts
-
-function Section({ title, children }: { title: React.ReactNode; children: React.ReactNode }) {
+/** Where a flag can be fixed: the invoice or the receipts ledger it names. */
+function flagLink(flag: TaxFlag) {
+  const href = flag.invoiceId !== undefined
+    ? `/invoices/${flag.invoiceId}`
+    : flag.expenseId !== undefined ? '/receipts' : null
+  if (!href) return null
   return (
-    <section className="bg-white dark:bg-gray-800 rounded-lg shadow p-5">
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{title}</h2>
-      {children}
-    </section>
-  )
-}
-
-function Stat({ label, value, note, accent }: { label: string; value: string; note: string; accent?: boolean }) {
-  return (
-    <div className={`rounded-lg shadow p-5 ${accent ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800'}`}>
-      <p className={`text-xs uppercase tracking-wide ${accent ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>{label}</p>
-      <p className={`mt-1 text-2xl font-bold tabular-nums ${accent ? '' : 'text-gray-900 dark:text-white'}`}>{value}</p>
-      <p className={`mt-1 text-xs ${accent ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>{note}</p>
-    </div>
-  )
-}
-
-function Row({ k, v, strong, muted, tone }: { k: string; v: string; strong?: boolean; muted?: boolean; tone?: 'good' | 'bad' }) {
-  const color = tone === 'good' ? 'text-green-600 dark:text-green-400' : tone === 'bad' ? 'text-red-600 dark:text-red-400' : muted ? 'text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-white'
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <dt className={muted ? 'text-gray-500 dark:text-gray-400' : 'text-gray-700 dark:text-gray-300'}>{k}</dt>
-      <dd className={`tabular-nums ${strong ? 'font-semibold' : ''} ${color}`}>{v}</dd>
-    </div>
-  )
-}
-
-function Money({ v, strong, muted }: { v: number; strong?: boolean; muted?: boolean }) {
-  return <span className={`tabular-nums ${strong ? 'font-semibold' : ''} ${muted ? 'text-gray-500 dark:text-gray-400' : ''}`}>{formatCurrency(v)}</span>
-}
-
-function Badge({ tone, children }: { tone: 'warn' | 'bad' | 'info' | 'muted'; children: React.ReactNode }) {
-  const styles = {
-    warn: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
-    bad: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
-    info: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-    muted: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
-  }[tone]
-  return <span className={`ml-2 inline-flex px-1.5 py-0.5 rounded text-[11px] font-medium ${styles}`}>{children}</span>
-}
-
-function Notice({ tone, children, onDismiss }: { tone: 'error' | 'info'; children: React.ReactNode; onDismiss?: () => void }) {
-  const styles = tone === 'error'
-    ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
-    : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
-  return (
-    <div className={`mb-4 p-3 rounded-lg text-sm flex items-center justify-between gap-3 ${styles}`}>
-      <span>{children}</span>
-      {onDismiss && <button type="button" onClick={onDismiss} className="hover:underline">Dismiss</button>}
-    </div>
-  )
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-gray-500 dark:text-gray-400">{children}</p>
-}
-
-function FlagList({ title, tone, flags }: { title: string; tone: 'bad' | 'warn' | 'info'; flags: TaxFlag[] }) {
-  if (flags.length === 0) return null
-  const Icon = tone === 'info' ? Info : AlertTriangle
-  const color = { bad: 'text-red-600 dark:text-red-400', warn: 'text-amber-600 dark:text-amber-400', info: 'text-blue-600 dark:text-blue-400' }[tone]
-  return (
-    <div className="mb-4 last:mb-0">
-      <h3 className={`text-sm font-semibold mb-2 ${color}`}>{title}</h3>
-      <ul className="space-y-2">
-        {flags.map((flag, i) => (
-          <li key={`${flag.code}-${flag.invoiceId ?? flag.expenseId ?? i}`} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <Icon className={`h-4 w-4 mt-0.5 flex-shrink-0 ${color}`} />
-            <span>
-              {flag.message}
-              {flag.invoiceId !== undefined && (
-                <> <Link href={`/invoices/${flag.invoiceId}`} className="text-blue-600 dark:text-blue-400 hover:underline">Open invoice</Link></>
-              )}
-              {flag.expenseId !== undefined && (
-                <> <Link href="/receipts" className="text-blue-600 dark:text-blue-400 hover:underline">Open receipts</Link></>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function Table({ head, rows, foot, numeric = [] }: {
-  head: string[]
-  rows: React.ReactNode[][]
-  foot?: React.ReactNode[]
-  numeric?: number[]
-}) {
-  const align = (i: number) => (numeric.includes(i) ? 'text-right' : 'text-left')
-  return (
-    <div className="overflow-x-auto -mx-5 px-5">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
-            {head.map((h, i) => <th key={h} className={`py-2 pr-4 ${align(i)}`}>{h}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((cells, r) => (
-            <tr key={r} className="border-b border-gray-100 dark:border-gray-700/60 text-gray-900 dark:text-white">
-              {cells.map((c, i) => <td key={i} className={`py-2 pr-4 ${align(i)}`}>{c}</td>)}
-            </tr>
-          ))}
-        </tbody>
-        {foot && (
-          <tfoot>
-            <tr className="text-gray-900 dark:text-white">
-              {foot.map((c, i) => <td key={i} className={`py-2 pr-4 ${align(i)}`}>{c}</td>)}
-            </tr>
-          </tfoot>
-        )}
-      </table>
-    </div>
+    <Link href={href} className="text-blue-600 dark:text-blue-400 hover:underline">
+      {flag.invoiceId !== undefined ? 'Open invoice' : 'Open receipts'}
+    </Link>
   )
 }

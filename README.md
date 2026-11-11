@@ -53,6 +53,17 @@ This is a complete rebuild of the original Flask/SQLite invoice tracker applicat
   - Turning it off hides it from invoices, exports and the summary without
     deleting any history
 
+- **Personal Deductions** (not part of the business)
+  - Charitable gifts and home mortgage records by tax year, each with its document
+  - The payee's own statement decides the figure: a charity's annual giving
+    statement or the lender's Form 1098, with the individual receipts
+    reconciled against it
+  - Mortgage interest estimated from the loan terms until the Form 1098 is added
+  - Compared against the year's standard deduction, so it is clear whether
+    itemizing changes anything
+  - Kept in its own table and page; never mixed into invoices, the Summary
+    or the Schedule C figures on the Tax page
+
 - **UI/UX**
   - Responsive design (mobile, tablet, desktop)
   - Dark mode support
@@ -206,6 +217,8 @@ Vercel will automatically deploy on every push to your main branch.
 - **line_items** - Individual line items (description, quantity, rate, type: LABOR/HARDWARE/OTHER)
 - **receipts** - Receipt file metadata (filename, storage path, upload date)
 - **settings** - Application settings (key-value pairs for dark mode, etc.)
+- **tax_years** - Per-year inputs from outside the app (1099-NEC amount, filing status)
+- **personal_deductions** - Personal charitable gifts and mortgage records; never business data
 
 ### Views
 
@@ -248,6 +261,13 @@ See [supabase/migrations/001_initial_schema.sql](./supabase/migrations/001_initi
 - `POST /api/invoices/[id]/receipts` - Upload receipt file
 - `GET /api/receipts/[id]` - Get single receipt with signed URL
 - `DELETE /api/receipts/[id]` - Delete receipt file and metadata
+
+### Personal deductions
+- `GET /api/personal` - All personal records with signed URLs, and filing status by year
+- `POST /api/personal` - Add a gift, payment, statement or document
+- `PATCH /api/personal/[id]` - Change a record
+- `DELETE /api/personal/[id]` - Delete a record and its document
+- `POST /api/personal/[id]/file` - Attach or replace a record's document
 
 ### Summary
 - `GET /api/summary` - Get financial summary by year/month with receipt tree

@@ -3,7 +3,7 @@
  * figures and a text summary of the flags. Pure, so it is testable; the
  * page bundles these with the year's receipts into one ZIP.
  */
-import { csvCell } from '@/lib/receiptExport'
+import { csvFile } from '@/lib/receiptExport'
 import type { TaxYearReport } from '@/lib/tax'
 
 export interface TaxPackageFile {
@@ -12,8 +12,7 @@ export interface TaxPackageFile {
 }
 
 const money = (n: number) => n.toFixed(2)
-const rows = (lines: string[][]) =>
-  '﻿' + lines.map((cells) => cells.map(csvCell).join(',')).join('\r\n') + '\r\n'
+const rows = csvFile
 
 export function buildTaxPackageFiles(report: TaxYearReport): TaxPackageFile[] {
   const y = report.year

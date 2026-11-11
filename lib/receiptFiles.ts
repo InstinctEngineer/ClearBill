@@ -39,80 +39,115 @@ export interface ZipProgress {
   current: string
 }
 
+/** A stored file to fetch into a ZIP. */
+export interface ZipAttachment {
+  /** Path inside the ZIP, folders included. */
+  name: string
+  /** Null when the file is missing from storage. */
+  url: string | null
+  /** What to call the file when reporting that it could not be fetched. */
+  label: string
+}
+
 /**
  * Bundle receipts into one ZIP: each file under a dated, invoice-stamped name
  * plus an index.csv describing them. Returns the names of any files that
  * could not be fetched so the caller can say so rather than ship a ZIP that
  * silently lacks them.
  */
-export async function downloadReceiptsZip(
+export function downloadReceiptsZip(
   receipts: ReceiptWithUrl[],
   zipName: string,
   onProgress?: (progress: ZipProgress) => void
 ): Promise<{ failed: string[] }> {
-  const zip = new JSZip()
-  const { failed, included } = await addReceiptsToZip(zip, receipts, '', onProgress)
-  zip.file('index.csv', buildIndexCsv(included, zipEntryNames(receipts)))
-  if (failed.length > 0) zip.file('MISSING.txt', missingText(failed))
-
-  onProgress?.({ done: receipts.length, total: receipts.length, current: 'Compressing…' })
-  saveBlob(await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }), zipName)
-  return { failed }
+  return downloadReceiptBundle([], receipts, '', zipName, onProgress)
 }
 
 /**
  * The tax package: the report's CSVs and read-me at the top, and the year's
  * receipt files under receipts/. One ZIP to hand to a preparer.
  */
-export async function downloadTaxPackage(
-  files: { name: string; content: string }[],
+export function downloadTaxPackage(
+  files: ZipTextFile[],
   receipts: ReceiptWithUrl[],
   zipName: string,
   onProgress?: (progress: ZipProgress) => void
 ): Promise<{ failed: string[] }> {
-  const zip = new JSZip()
-  for (const file of files) zip.file(file.name, file.content)
-  const { failed, included } = await addReceiptsToZip(zip, receipts, 'receipts/', onProgress)
-  zip.file('receipts/index.csv', buildIndexCsv(included, zipEntryNames(receipts)))
-  if (failed.length > 0) zip.file('receipts/MISSING.txt', missingText(failed))
+  return downloadReceiptBundle(files, receipts, 'receipts/', zipName, onProgress)
+}
 
-  onProgress?.({ done: receipts.length, total: receipts.length, current: 'Compressing…' })
+/** Receipts under `folder`, with an index of the ones that made it in. */
+async function downloadReceiptBundle(
+  files: ZipTextFile[],
+  receipts: ReceiptWithUrl[],
+  folder: string,
+  zipName: string,
+  onProgress?: (progress: ZipProgress) => void
+): Promise<{ failed: string[] }> {
+  const names = zipEntryNames(receipts)
+  const attachments = receipts.map((receipt): ZipAttachment => ({
+    name: folder + (names.get(receipt.id) ?? receipt.filename),
+    url: receipt.url,
+    label: receipt.filename,
+  }))
+  return downloadZip({
+    files,
+    attachments,
+    zipName,
+    missingName: `${folder}MISSING.txt`,
+    onProgress,
+    // The index lists only what is actually inside, so it is built last.
+    afterFetch: (failed) => [{
+      name: `${folder}index.csv`,
+      content: buildIndexCsv(receipts.filter((receipt) => !failed.includes(receipt.filename)), names),
+    }],
+  })
+}
+
+export interface ZipTextFile {
+  name: string
+  content: string
+}
+
+/**
+ * Build a ZIP from text files and stored attachments, and save it. Files that
+ * cannot be fetched are listed in a MISSING.txt, never silently skipped.
+ */
+export async function downloadZip(options: {
+  files: ZipTextFile[]
+  attachments: ZipAttachment[]
+  zipName: string
+  missingName?: string
+  onProgress?: (progress: ZipProgress) => void
+  /** Extra text files that depend on which attachments could be fetched. */
+  afterFetch?: (failed: string[]) => ZipTextFile[]
+}): Promise<{ failed: string[] }> {
+  const { files, attachments, zipName, missingName = 'MISSING.txt', onProgress, afterFetch } = options
+  const zip = new JSZip()
+  const failed: string[] = []
+
+  for (const [index, attachment] of attachments.entries()) {
+    onProgress?.({ done: index, total: attachments.length, current: attachment.label })
+    try {
+      if (!attachment.url) throw new Error('no file')
+      const res = await fetch(attachment.url)
+      if (!res.ok) throw new Error(String(res.status))
+      zip.file(attachment.name, await res.arrayBuffer())
+    } catch {
+      failed.push(attachment.label)
+    }
+  }
+
+  for (const file of [...files, ...(afterFetch?.(failed) ?? [])]) zip.file(file.name, file.content)
+  if (failed.length > 0) zip.file(missingName, missingText(failed))
+
+  onProgress?.({ done: attachments.length, total: attachments.length, current: 'Compressing…' })
   saveBlob(await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' }), zipName)
   return { failed }
 }
 
-/**
- * Fetch each receipt and add it under a dated, invoice-stamped name. Files
- * that cannot be fetched are reported, never silently skipped.
- */
-async function addReceiptsToZip(
-  zip: JSZip,
-  receipts: ReceiptWithUrl[],
-  folder: string,
-  onProgress?: (progress: ZipProgress) => void
-): Promise<{ failed: string[]; included: ReceiptWithUrl[] }> {
-  const names = zipEntryNames(receipts)
-  const failed: string[] = []
-
-  for (const [index, receipt] of receipts.entries()) {
-    onProgress?.({ done: index, total: receipts.length, current: receipt.filename })
-    if (!receipt.url) {
-      failed.push(receipt.filename)
-      continue
-    }
-    try {
-      const res = await fetch(receipt.url)
-      if (!res.ok) throw new Error(String(res.status))
-      zip.file(folder + (names.get(receipt.id) ?? receipt.filename), await res.arrayBuffer())
-    } catch {
-      failed.push(receipt.filename)
-    }
-  }
-  return { failed, included: receipts.filter((r) => !failed.includes(r.filename)) }
-}
-
 function missingText(failed: string[]): string {
-  return ['These receipts are listed in ClearBill but could not be fetched:', '', ...failed].join('\n')
+  return ['These files are listed in ClearBill but could not be fetched:', '', ...failed].join('\n')
 }
 
 function saveBlob(blob: Blob, filename: string): void {

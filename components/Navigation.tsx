@@ -8,6 +8,7 @@ import {
   BarChart3,
   Receipt,
   Landmark,
+  HeartHandshake,
   Settings,
   LogOut,
   Menu,
@@ -25,6 +26,7 @@ export default function Navigation() {
     { href: '/summary', label: 'Summary', icon: BarChart3 },
     { href: '/receipts', label: 'Receipts', icon: Receipt },
     { href: '/tax', label: 'Tax', icon: Landmark },
+    { href: '/personal', label: 'Personal', icon: HeartHandshake },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
 
