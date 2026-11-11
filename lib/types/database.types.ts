@@ -150,19 +150,82 @@ export interface Database {
         Row: {
           year: number
           form_1099_nec: number | null
+          filing_status: string | null
           notes: string | null
           updated_at: string
         }
         Insert: {
           year: number
           form_1099_nec?: number | null
+          filing_status?: string | null
           notes?: string | null
           updated_at?: string
         }
         Update: {
           form_1099_nec?: number | null
+          filing_status?: string | null
           notes?: string | null
           updated_at?: string
+        }
+      }
+      personal_deductions: {
+        Row: {
+          id: number
+          category: string
+          record_type: 'payment' | 'statement' | 'document'
+          payee: string
+          payee_tax_id: string | null
+          record_date: string
+          tax_year: number
+          amount: number | null
+          reference: string | null
+          payment_method: string | null
+          description: string | null
+          details: Record<string, unknown>
+          counted: boolean
+          notes: string | null
+          filename: string | null
+          storage_path: string | null
+          source: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          category: string
+          record_type?: 'payment' | 'statement' | 'document'
+          payee: string
+          payee_tax_id?: string | null
+          record_date: string
+          tax_year: number
+          amount?: number | null
+          reference?: string | null
+          payment_method?: string | null
+          description?: string | null
+          details?: Record<string, unknown>
+          counted?: boolean
+          notes?: string | null
+          filename?: string | null
+          storage_path?: string | null
+          source?: string | null
+        }
+        Update: {
+          category?: string
+          record_type?: 'payment' | 'statement' | 'document'
+          payee?: string
+          payee_tax_id?: string | null
+          record_date?: string
+          tax_year?: number
+          amount?: number | null
+          reference?: string | null
+          payment_method?: string | null
+          description?: string | null
+          details?: Record<string, unknown>
+          counted?: boolean
+          notes?: string | null
+          filename?: string | null
+          storage_path?: string | null
+          source?: string | null
         }
       }
       settings: {
@@ -206,6 +269,7 @@ export type LineItem = Database['public']['Tables']['line_items']['Row']
 export type Receipt = Database['public']['Tables']['receipts']['Row']
 export type Setting = Database['public']['Tables']['settings']['Row']
 export type TaxYear = Database['public']['Tables']['tax_years']['Row']
+export type PersonalDeductionRow = Database['public']['Tables']['personal_deductions']['Row']
 
 export type InvoiceInsert = Database['public']['Tables']['invoices']['Insert']
 export type LineItemInsert = Database['public']['Tables']['line_items']['Insert']

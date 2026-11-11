@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { isFilingStatus } from '@/lib/personalDeductions'
 import { availableTaxYears, buildTaxYearReport, type TaxExpense } from '@/lib/tax'
 import type { Invoice, LineItem } from '@/lib/types/database.types'
 
@@ -71,7 +72,8 @@ export async function GET(
 
 /**
  * PATCH /api/tax/[year]
- * Record the 1099-NEC amount the client reported, and any notes.
+ * Record what comes from outside the app for a year: the 1099-NEC amount
+ * the client reported, the personal filing status, and any notes.
  */
 export async function PATCH(
   request: Request,
@@ -105,6 +107,12 @@ export async function PATCH(
       }
     }
     if (body.notes !== undefined) row.notes = String(body.notes).trim() || null
+    if (body.filing_status !== undefined) {
+      if (body.filing_status !== null && !isFilingStatus(body.filing_status)) {
+        return NextResponse.json({ error: 'filing_status is not a recognized status' }, { status: 400 })
+      }
+      row.filing_status = body.filing_status
+    }
 
     const { data, error } = await supabase
       .from('tax_years')

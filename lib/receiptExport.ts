@@ -69,20 +69,29 @@ export function receiptsForYear<T extends ReceiptListItem>(receipts: T[], year: 
  * only one entry per name.
  */
 export function zipEntryNames(receipts: ReceiptListItem[]): Map<number, string> {
-  const names = new Map<number, string>()
-  const taken = new Set<string>()
-
-  for (const receipt of receipts) {
+  const bases = receipts.map((receipt) => {
     const origin = receipt.invoiceId === null ? 'no-invoice' : `invoice-${receipt.invoiceId}`
-    const base = `${receipt.invoiceDate}_${origin}_${safeFileName(receipt.filename)}`
+    return `${receipt.invoiceDate}_${origin}_${safeFileName(receipt.filename)}`
+  })
+  const unique = uniqueFileNames(bases)
+  return new Map(receipts.map((receipt, index) => [receipt.id, unique[index]]))
+}
+
+/**
+ * Make every name in a list distinct, ignoring case, by adding -2, -3 before
+ * the extension. A ZIP silently keeps only one entry per name, and Windows
+ * and macOS treat names that differ only by case as the same file.
+ */
+export function uniqueFileNames(bases: string[]): string[] {
+  const taken = new Set<string>()
+  return bases.map((base) => {
     let name = base
     for (let n = 2; taken.has(name.toLowerCase()); n++) {
       name = withSuffix(base, `-${n}`)
     }
     taken.add(name.toLowerCase())
-    names.set(receipt.id, name)
-  }
-  return names
+    return name
+  })
 }
 
 /** Strip characters that are illegal or awkward in file names on Windows and macOS. */
@@ -127,12 +136,15 @@ export function buildIndexCsv(receipts: ReceiptListItem[], entryNames: Map<numbe
     receipt.receiptDate ?? '',
     receipt.total === null ? '' : receipt.total.toFixed(2),
   ])
-  // CRLF and a leading byte-order mark so Excel opens it as UTF-8 with columns intact.
-  return '﻿' + [INDEX_COLUMNS as readonly string[], ...rows].map(csvRow).join('\r\n') + '\r\n'
+  return csvFile([INDEX_COLUMNS, ...rows])
 }
 
-function csvRow(cells: readonly string[]): string {
-  return cells.map(csvCell).join(',')
+/**
+ * The text of a CSV file. CRLF line ends and a leading byte-order mark so
+ * Excel opens it as UTF-8 with the columns intact.
+ */
+export function csvFile(lines: readonly (readonly string[])[]): string {
+  return '\ufeff' + lines.map((cells) => cells.map(csvCell).join(',')).join('\r\n') + '\r\n'
 }
 
 /** Quote a cell when it holds a comma, quote or line break; double any quotes inside. */
