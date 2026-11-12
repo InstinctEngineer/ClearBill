@@ -25,7 +25,7 @@ export async function GET(
   }
 
   try {
-    const [invoices, lineItems, expenses, migration, taxYear] = await Promise.all([
+    const [invoices, lineItems, expenses, migration, taxYear, forms1099] = await Promise.all([
       supabase.from('invoices').select('id, project_name, client, date, paid, paid_date, waived'),
       supabase.from('line_items').select(
         'id, invoice_id, date, description, item_type, quantity, unit_rate, discount_percentage, applies_to_debt, client_pays'
@@ -35,6 +35,8 @@ export async function GET(
       ),
       supabase.from('settings').select('value').eq('key', 'MIGRATION_DATE').maybeSingle(),
       supabase.from('tax_years').select('form_1099_nec, notes').eq('year', year).maybeSingle(),
+      supabase.from('personal_deductions').select('amount')
+        .eq('tax_year', year).eq('form', '1099-NEC').eq('counted', true).eq('expected', false),
     ])
 
     const failed = [invoices, lineItems, expenses].find((r) => r.error)
@@ -44,6 +46,8 @@ export async function GET(
     }
 
     const toNumber = (v: unknown) => (v === null || v === undefined ? null : Number(v))
+    const uploaded = (forms1099.data ?? []).map((row) => Number(row.amount ?? 0))
+    const uploaded1099Nec = uploaded.length > 0 ? uploaded.reduce((a, b) => a + b, 0) : null
     const report = buildTaxYearReport({
       year,
       invoices: (invoices.data ?? []) as Invoice[],
@@ -56,7 +60,9 @@ export async function GET(
       expenses: ((expenses.data ?? []) as TaxExpense[]).map((e) => ({ ...e, amount: toNumber(e.amount) })),
       // MIGRATION_DATE is stored as a timestamp string; only the day matters.
       migrationDate: migration.data?.value ? String(migration.data.value).slice(0, 10) : null,
-      form1099Nec: toNumber(taxYear.data?.form_1099_nec),
+      // The figure typed on this page wins; until then, 1099-NEC forms
+      // uploaded on the Personal page supply it.
+      form1099Nec: toNumber(taxYear.data?.form_1099_nec) ?? uploaded1099Nec,
     })
 
     return NextResponse.json({

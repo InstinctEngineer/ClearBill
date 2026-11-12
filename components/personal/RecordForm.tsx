@@ -3,11 +3,15 @@
 import { useState } from 'react'
 import { Loader2, Save, X } from 'lucide-react'
 import {
+  DETAIL_FIELDS,
+  DETAIL_KEYS,
   PERSONAL_CATEGORIES,
-  RECORD_TYPES,
   personalCategory,
-  recordKindLabel,
+  recordKind,
+  recordKinds,
+  type DetailKey,
   type PersonalRecord,
+  type RecordKind,
   type RecordType,
 } from '@/lib/personalDeductions'
 import { monthOfDateOnly, todayDateOnly, yearOfDateOnly } from '@/lib/utils/dates'
@@ -16,6 +20,7 @@ import { monthOfDateOnly, todayDateOnly, yearOfDateOnly } from '@/lib/utils/date
 interface Draft {
   category: string
   record_type: RecordType
+  form: string
   payee: string
   payee_tax_id: string
   record_date: string
@@ -26,14 +31,10 @@ interface Draft {
   description: string
   notes: string
   counted: boolean
+  expected: boolean
   no_goods_statement: boolean
-  principal: string
-  escrow: string
-  total_paid: string
-  balance: string
-  points: string
-  property_tax: string
-  outstanding_principal: string
+  /** The extra figures, by key; which ones show depends on the kind. */
+  details: Record<DetailKey, string>
   has_loan: boolean
   loan_principal: string
   loan_rate: string
@@ -46,13 +47,18 @@ interface Draft {
 const text = (value: string | number | null | undefined) =>
   value === null || value === undefined ? '' : String(value)
 
-/** A blank draft, pre-filled from whatever the caller already knows. */
+/** A draft, pre-filled from whatever the caller already knows. */
 function draftFrom(record: Partial<PersonalRecord>): Draft {
   const details = record.details ?? {}
   const loan = details.loan
+  const category = record.category ?? 'charity_cash'
+  // Settle on a kind the category really has, so the form never opens on a
+  // combination the server would refuse.
+  const kind = recordKind(category, record.record_type ?? 'payment', record.form) ?? recordKinds(category)[0]
   return {
-    category: record.category ?? 'charity_cash',
-    record_type: record.record_type ?? 'payment',
+    category,
+    record_type: kind.type,
+    form: kind.form ?? '',
     payee: record.payee ?? '',
     payee_tax_id: text(record.payee_tax_id),
     record_date: record.record_date ?? todayDateOnly(),
@@ -63,14 +69,9 @@ function draftFrom(record: Partial<PersonalRecord>): Draft {
     description: text(record.description),
     notes: text(record.notes),
     counted: record.counted ?? true,
+    expected: record.expected ?? false,
     no_goods_statement: details.no_goods_statement ?? false,
-    principal: text(details.principal),
-    escrow: text(details.escrow),
-    total_paid: text(details.total_paid),
-    balance: text(details.balance),
-    points: text(details.points),
-    property_tax: text(details.property_tax),
-    outstanding_principal: text(details.outstanding_principal),
+    details: Object.fromEntries(DETAIL_KEYS.map((key) => [key, text(details[key])])) as Record<DetailKey, string>,
     has_loan: Boolean(loan),
     loan_principal: text(loan?.principal),
     loan_rate: text(loan?.annual_rate),
@@ -91,26 +92,23 @@ function likelyTaxYear(date: string, type: RecordType): string {
   return String(type === 'statement' && monthOfDateOnly(date) <= 3 ? year - 1 : year)
 }
 
-/** Which of the extra figures apply to this kind of record. */
-function fieldsFor(draft: Draft) {
-  const charity = personalCategory(draft.category)?.group === 'charity'
-  const mortgage = draft.category === 'mortgage'
+/** What the draft currently is, and which optional parts of the form apply. */
+function shape(draft: Draft) {
+  const kind: RecordKind = recordKind(draft.category, draft.record_type, draft.form || null) ?? recordKinds(draft.category)[0]
   return {
-    charity,
-    payment: mortgage && draft.record_type === 'payment',
-    form1098: mortgage && draft.record_type === 'statement',
-    loan: mortgage && draft.record_type === 'document',
+    kind,
+    charity: personalCategory(draft.category)?.group === 'charity',
+    loan: draft.category === 'mortgage' && draft.record_type === 'document',
   }
 }
 
-/** The JSON body the API expects. Only figures that apply are sent. */
+/** The JSON body the API expects. Only figures that apply to the kind are sent. */
 function bodyFrom(draft: Draft): Record<string, unknown> {
-  const show = fieldsFor(draft)
+  const { kind, charity, loan } = shape(draft)
   const details: Record<string, unknown> = {}
-  if (show.charity && draft.no_goods_statement) details.no_goods_statement = true
-  if (show.payment) Object.assign(details, { principal: draft.principal, escrow: draft.escrow, total_paid: draft.total_paid, balance: draft.balance })
-  if (show.form1098) Object.assign(details, { points: draft.points, property_tax: draft.property_tax, outstanding_principal: draft.outstanding_principal })
-  if (show.loan && draft.has_loan) {
+  for (const key of kind.fields ?? []) details[key] = draft.details[key]
+  if (charity && draft.no_goods_statement) details.no_goods_statement = true
+  if (loan && draft.has_loan) {
     details.loan = {
       principal: draft.loan_principal,
       annual_rate: draft.loan_rate,
@@ -123,6 +121,7 @@ function bodyFrom(draft: Draft): Record<string, unknown> {
   return {
     category: draft.category,
     record_type: draft.record_type,
+    form: draft.form || null,
     payee: draft.payee,
     payee_tax_id: draft.payee_tax_id,
     record_date: draft.record_date,
@@ -133,22 +132,15 @@ function bodyFrom(draft: Draft): Record<string, unknown> {
     description: draft.description,
     notes: draft.notes,
     counted: draft.counted,
+    expected: draft.expected,
     details,
   }
 }
 
-function amountLabel(draft: Draft): string {
-  const show = fieldsFor(draft)
-  if (show.form1098) return 'Interest received (Box 1)'
-  if (show.payment) return 'Interest part of the payment'
-  if (draft.record_type === 'statement') return 'Total on the statement'
-  if (draft.record_type === 'document') return 'Amount, if any'
-  return show.charity ? 'Gift amount' : 'Amount paid'
-}
-
 /**
- * Add or edit one personal record. Saves the fields, then the document if
- * one was chosen, and reports back once both are done.
+ * Add or edit one personal tax record. What it asks for follows the kind of
+ * record chosen, as listed in lib/personalKinds.ts. Saves the fields, then
+ * the document if one was chosen, and reports back once both are done.
  */
 export default function RecordForm({ record, seed, payees, onSaved, onCancel }: {
   /** The record being edited; omit to add a new one. */
@@ -170,16 +162,19 @@ export default function RecordForm({ record, seed, payees, onSaved, onCancel }: 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
+  const patch = (change: Partial<Draft>) =>
     setDraft((current) => {
-      const next = { ...current, [key]: value }
-      if (!yearTouched && (key === 'record_date' || key === 'record_type')) {
+      const next = { ...current, ...change }
+      if (!yearTouched && ('record_date' in change || 'record_type' in change)) {
         next.tax_year = likelyTaxYear(next.record_date, next.record_type)
       }
       return next
     })
+  const set = <K extends keyof Draft>(key: K, value: Draft[K]) => patch({ [key]: value } as Partial<Draft>)
 
-  const show = fieldsFor(draft)
+  const kinds = recordKinds(draft.category)
+  const { kind, charity, loan } = shape(draft)
+  const chooseKind = (next: RecordKind) => patch({ record_type: next.type, form: next.form ?? '' })
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -225,20 +220,34 @@ export default function RecordForm({ record, seed, payees, onSaved, onCancel }: 
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Field label="Category">
-          <select value={draft.category} onChange={(e) => set('category', e.target.value)} className={INPUT}>
+          <select
+            value={draft.category}
+            onChange={(e) => {
+              // A different category takes different kinds; start on its first.
+              const first = recordKinds(e.target.value)[0]
+              // A new record starts on the last charity given to. That head
+              // start is wrong for any other category, so it goes with it.
+              const seeded = !record && seed?.payee !== undefined && draft.payee === seed.payee
+              patch({
+                category: e.target.value, record_type: first.type, form: first.form ?? '',
+                ...(seeded ? { payee: '', payee_tax_id: '', payment_method: '' } : {}),
+              })
+            }}
+            className={INPUT}
+          >
             {PERSONAL_CATEGORIES.map((category) => (
               <option key={category.key} value={category.key}>{category.label}</option>
             ))}
           </select>
         </Field>
         <Field label="What is it">
-          <select value={draft.record_type} onChange={(e) => set('record_type', e.target.value as RecordType)} className={INPUT}>
-            {RECORD_TYPES.map((type) => (
-              <option key={type} value={type}>{recordKindLabel(draft.category, type)}</option>
+          <select value={kinds.indexOf(kind)} onChange={(e) => chooseKind(kinds[Number(e.target.value)])} className={INPUT}>
+            {kinds.map((option, index) => (
+              <option key={`${option.type}-${option.form ?? ''}`} value={index}>{option.label}</option>
             ))}
           </select>
         </Field>
-        <Field label={show.charity ? 'Organization' : 'Paid to'} wide>
+        <Field label={charity ? 'Organization' : 'From or paid to'} wide>
           <input required list="personal-payees" value={draft.payee} onChange={(e) => set('payee', e.target.value)} className={INPUT} />
           <datalist id="personal-payees">
             {payees.map((payee) => <option key={payee} value={payee} />)}
@@ -255,38 +264,27 @@ export default function RecordForm({ record, seed, payees, onSaved, onCancel }: 
             className={INPUT}
           />
         </Field>
-        <Field label={amountLabel(draft)}>
-          <input inputMode="decimal" value={draft.amount} onChange={(e) => set('amount', e.target.value)} placeholder="0.00" className={INPUT} />
-        </Field>
-        <Field label={show.charity ? 'Receipt number' : 'Reference'}>
+        <Money label={kind.amount} value={draft.amount} onChange={(v) => set('amount', v)} />
+        <Field label={charity ? 'Receipt number' : 'Reference'}>
           <input value={draft.reference} onChange={(e) => set('reference', e.target.value)} className={INPUT} />
         </Field>
 
-        {show.charity && (
-          <Field label="EIN">
-            <input value={draft.payee_tax_id} onChange={(e) => set('payee_tax_id', e.target.value)} placeholder="12-3456789" className={INPUT} />
-          </Field>
-        )}
+        {(kind.fields ?? []).map((key) => (
+          <Money
+            key={key}
+            label={DETAIL_FIELDS[key]}
+            value={draft.details[key]}
+            onChange={(v) => set('details', { ...draft.details, [key]: v })}
+          />
+        ))}
+
+        <Field label="Tax ID (EIN), if known">
+          <input value={draft.payee_tax_id} onChange={(e) => set('payee_tax_id', e.target.value)} placeholder="12-3456789" className={INPUT} />
+        </Field>
         {draft.record_type === 'payment' && (
           <Field label="Paid by">
             <input value={draft.payment_method} onChange={(e) => set('payment_method', e.target.value)} placeholder="Card, check, PayPal…" className={INPUT} />
           </Field>
-        )}
-
-        {show.payment && (
-          <>
-            <Money label="Principal part" value={draft.principal} onChange={(v) => set('principal', v)} />
-            <Money label="Escrow part" value={draft.escrow} onChange={(v) => set('escrow', v)} />
-            <Money label="Total paid" value={draft.total_paid} onChange={(v) => set('total_paid', v)} />
-            <Money label="Balance after" value={draft.balance} onChange={(v) => set('balance', v)} />
-          </>
-        )}
-        {show.form1098 && (
-          <>
-            <Money label="Points paid (Box 6)" value={draft.points} onChange={(v) => set('points', v)} />
-            <Money label="Property tax paid from escrow" value={draft.property_tax} onChange={(v) => set('property_tax', v)} />
-            <Money label="Outstanding principal (Box 2)" value={draft.outstanding_principal} onChange={(v) => set('outstanding_principal', v)} />
-          </>
         )}
 
         <Field label="Description" wide>
@@ -297,7 +295,7 @@ export default function RecordForm({ record, seed, payees, onSaved, onCancel }: 
         </Field>
       </div>
 
-      {show.loan && (
+      {loan && (
         <fieldset className="mt-4 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
           <Check checked={draft.has_loan} onChange={(v) => set('has_loan', v)}>
             This document sets the loan terms. They are used to estimate each year&apos;s interest until the Form 1098 is added.
@@ -324,11 +322,14 @@ export default function RecordForm({ record, seed, payees, onSaved, onCancel }: 
       )}
 
       <div className="mt-4 space-y-2">
-        {show.charity && (
+        {charity && (
           <Check checked={draft.no_goods_statement} onChange={(v) => set('no_goods_statement', v)}>
             The document states that no goods or services were received in return. Needed for any single gift of $250 or more.
           </Check>
         )}
+        <Check checked={draft.expected} onChange={(v) => set('expected', v)}>
+          Not on file yet. The document exists but you do not have it. It is listed as still to get and left out of the totals until you add it.
+        </Check>
         <Check checked={draft.counted} onChange={(v) => set('counted', v)}>
           Count this in the totals. Untick to keep a voided or superseded document without counting it.
         </Check>
@@ -340,8 +341,13 @@ export default function RecordForm({ record, seed, payees, onSaved, onCancel }: 
             {record?.filename ? `Replace the document (now ${record.filename})` : 'Document'}
           </span>
           <input
-            type="file" accept="application/pdf,image/*,.txt,.eml"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            type="file" accept="application/pdf,image/*,.txt,.eml,.csv"
+            onChange={(e) => {
+              const chosen = e.target.files?.[0] ?? null
+              setFile(chosen)
+              // Attaching the document is what makes it no longer "still to get".
+              if (chosen) set('expected', false)
+            }}
             className="block text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-200"
           />
         </label>

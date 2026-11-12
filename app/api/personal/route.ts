@@ -32,8 +32,8 @@ export async function GET() {
       supabase.from('tax_years').select('year, filing_status'),
     ])
     if (rows.error) {
-      console.error('Error fetching personal deductions:', rows.error)
-      return NextResponse.json({ error: 'Failed to load personal deductions' }, { status: 500 })
+      console.error('Error fetching personal records:', rows.error)
+      return NextResponse.json({ error: 'Failed to load personal records' }, { status: 500 })
     }
 
     const records = ((rows.data ?? []) as unknown as Record<string, unknown>[]).map(toPersonalRecord)
