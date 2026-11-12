@@ -1,12 +1,15 @@
 /**
- * Personal deductions: charitable gifts and the home mortgage.
+ * Personal tax records: charitable gifts, the home mortgage, and the forms
+ * the rest of a personal return is built from (W-2, 1098-E, 1099-R, ...).
  *
- * Nothing here is business income or expense. These figures belong on
- * Schedule A of the personal return, so they are kept apart from lib/tax.ts,
- * which answers Schedule C.
+ * Nothing here is business income or expense. These figures belong on the
+ * personal return, so they are kept apart from lib/tax.ts, which answers
+ * Schedule C. The one bridge is a Form 1099-NEC, which the business Tax page
+ * reads as the figure to reconcile against.
  *
- * The ledger holds three kinds of record (see migration 014): payments,
- * statements and documents. The rule for a year's figure is the same in
+ * The ledger holds three kinds of record (see migrations 014 and 015):
+ * payments, statements and documents. Which categories and forms exist is
+ * data, in lib/personalKinds.ts. The rule for a year's figure is the same in
  * every category: the payee's own statement wins when there is one, and the
  * individual payments are reconciled against it. That mirrors how the
  * business side treats a 1099.
@@ -14,23 +17,24 @@
  * Pure: no React, no Supabase, no clock. The caller passes today's date.
  */
 import type { ParseResult } from '@/lib/lineItems'
+import {
+  DETAIL_KEYS,
+  FORM_CATEGORIES,
+  personalCategory,
+  recordKindLabel,
+  recordKinds,
+  statementName,
+  RECORD_TYPES,
+  type DetailKey,
+  type RecordType,
+} from '@/lib/personalKinds'
 import { groupBy, money, round2, sortFlags, sum, type FlagSeverity } from '@/lib/tax'
 import { cellToDateOnly, monthOfDateOnly, yearOfDateOnly } from '@/lib/utils/dates'
 
 // ------------------------------------------------------------ vocabulary
 
-export const PERSONAL_CATEGORIES = [
-  { key: 'charity_cash', label: 'Charitable gift, money', group: 'charity', scheduleALine: '11' },
-  { key: 'charity_noncash', label: 'Charitable gift, goods', group: 'charity', scheduleALine: '12' },
-  { key: 'mortgage', label: 'Home mortgage', group: 'home', scheduleALine: '8a' },
-  { key: 'property_tax', label: 'Property tax', group: 'home', scheduleALine: '5b' },
-] as const
-
-export type PersonalCategoryKey = (typeof PERSONAL_CATEGORIES)[number]['key']
-export type PersonalGroup = (typeof PERSONAL_CATEGORIES)[number]['group']
-
-export const RECORD_TYPES = ['payment', 'statement', 'document'] as const
-export type RecordType = (typeof RECORD_TYPES)[number]
+// Categories, kinds of record and their labels are data; see personalKinds.
+export * from '@/lib/personalKinds'
 
 export const FILING_STATUSES = [
   { key: 'single', label: 'Single' },
@@ -41,29 +45,12 @@ export const FILING_STATUSES = [
 
 export type FilingStatus = (typeof FILING_STATUSES)[number]['key']
 
-export function personalCategory(key: string) {
-  return PERSONAL_CATEGORIES.find((category) => category.key === key) ?? null
-}
-
 export function isFilingStatus(value: unknown): value is FilingStatus {
   return FILING_STATUSES.some((status) => status.key === value)
 }
 
 export function filingStatusLabel(status: FilingStatus): string {
   return FILING_STATUSES.find((entry) => entry.key === status)!.label
-}
-
-/** What a statement is called, so the page and the flags use the same words. */
-export function statementName(category: string): string {
-  return category === 'mortgage' ? 'Form 1098' : 'annual giving statement'
-}
-
-/** What each kind of record is called for a category, e.g. in the entry form. */
-export function recordKindLabel(category: string, type: RecordType): string {
-  const home = personalCategory(category)?.group === 'home'
-  if (type === 'statement') return category === 'mortgage' ? 'Form 1098' : home ? 'Annual statement' : 'Annual giving statement'
-  if (type === 'document') return category === 'mortgage' ? 'Loan paperwork' : 'Other document'
-  return home ? 'Payment' : 'Gift'
 }
 
 // ------------------------------------------------------------ records
@@ -81,20 +68,15 @@ export interface LoanTerms {
   prepaid_interest?: number
 }
 
-/** Figures that only some kinds of record carry. Stored as JSON. */
-export interface PersonalDetails {
-  // one mortgage payment
-  principal?: number
-  escrow?: number
-  total_paid?: number
-  balance?: number
-  // a Form 1098
-  points?: number
-  property_tax?: number
-  outstanding_principal?: number
-  // loan paperwork
+/**
+ * Figures that only some kinds of record carry. Stored as JSON. The money
+ * figures are the keys of DETAIL_FIELDS; which ones a record uses is set by
+ * its kind in personalKinds.
+ */
+export type PersonalDetails = Partial<Record<DetailKey, number>> & {
+  /** Loan paperwork: the terms interest is estimated from. */
   loan?: LoanTerms
-  // a charity document that states no goods or services were given in return
+  /** A charity document stating no goods or services were given in return. */
   no_goods_statement?: boolean
 }
 
@@ -103,6 +85,8 @@ export interface PersonalRecord {
   id: number
   category: string
   record_type: RecordType
+  /** Which tax form this is, e.g. '1098-E'. Null for a plain receipt. */
+  form: string | null
   payee: string
   payee_tax_id: string | null
   record_date: string
@@ -113,6 +97,8 @@ export interface PersonalRecord {
   description: string | null
   details: PersonalDetails
   counted: boolean
+  /** Known to exist but not on file yet. Never counted; listed as still to get. */
+  expected: boolean
   notes: string | null
   filename: string | null
   storage_path: string | null
@@ -136,12 +122,14 @@ export interface PersonalResponse {
 
 /** Columns the API reads, in one place so every route selects the same row. */
 export const PERSONAL_RECORD_COLUMNS =
-  'id, category, record_type, payee, payee_tax_id, record_date, tax_year, amount, reference, payment_method, description, details, counted, notes, filename, storage_path, source'
+  'id, category, record_type, form, payee, payee_tax_id, record_date, tax_year, amount, reference, payment_method, description, details, counted, expected, notes, filename, storage_path, source'
 
 /** A database row as a record: NUMERIC can arrive as a string, JSON as null. */
 export function toPersonalRecord(row: Record<string, unknown>): PersonalRecord {
   return {
     ...(row as unknown as PersonalRecord),
+    form: (row.form as string | null | undefined) ?? null,
+    expected: Boolean(row.expected),
     amount: row.amount === null || row.amount === undefined ? null : Number(row.amount),
     details: (row.details ?? {}) as PersonalDetails,
   }
@@ -160,14 +148,19 @@ export function personalStoragePath(record: Pick<PersonalRecord, 'category' | 't
  */
 export function parsePersonalRecord(body: Record<string, unknown>): ParseResult<PersonalRecordInput> {
   const category = String(body.category ?? '').trim()
-  if (!personalCategory(category)) {
-    return { ok: false, error: `category must be one of ${PERSONAL_CATEGORIES.map((c) => c.key).join(', ')}` }
-  }
+  if (!personalCategory(category)) return { ok: false, error: 'category is not one the app knows' }
 
   const recordType = String(body.record_type ?? 'payment').trim() as RecordType
   if (!RECORD_TYPES.includes(recordType)) {
     return { ok: false, error: `record_type must be one of ${RECORD_TYPES.join(', ')}` }
   }
+
+  // A form is only meaningful as one of the kinds its category takes.
+  const form = optionalText(body.form)
+  if (form && !recordKinds(category).some((kind) => kind.type === recordType && kind.form === form)) {
+    return { ok: false, error: `form ${form} is not one that ${category} takes` }
+  }
+  const expected = Boolean(body.expected)
 
   const payee = String(body.payee ?? '').trim()
   if (!payee) return { ok: false, error: 'payee is required' }
@@ -186,7 +179,8 @@ export function parsePersonalRecord(body: Record<string, unknown>): ParseResult<
 
   const amount = optionalMoney(body.amount)
   if (amount === undefined) return { ok: false, error: 'amount must be a number of 0 or more' }
-  if (amount === null && recordType === 'statement') {
+  // A statement still to be fetched has no figure yet; one on file must.
+  if (amount === null && recordType === 'statement' && !expected) {
     return { ok: false, error: 'a statement needs its total as the amount' }
   }
 
@@ -198,6 +192,7 @@ export function parsePersonalRecord(body: Record<string, unknown>): ParseResult<
     value: {
       category,
       record_type: recordType,
+      form,
       payee,
       payee_tax_id: optionalText(body.payee_tax_id),
       record_date: recordDate,
@@ -208,14 +203,11 @@ export function parsePersonalRecord(body: Record<string, unknown>): ParseResult<
       description: optionalText(body.description),
       details: details.value,
       counted: body.counted === undefined ? true : Boolean(body.counted),
+      expected,
       notes: optionalText(body.notes),
     },
   }
 }
-
-const DETAIL_MONEY_KEYS = [
-  'principal', 'escrow', 'total_paid', 'balance', 'points', 'property_tax', 'outstanding_principal',
-] as const
 
 function parseDetails(raw: unknown): ParseResult<PersonalDetails> {
   if (raw === undefined || raw === null) return { ok: true, value: {} }
@@ -223,7 +215,7 @@ function parseDetails(raw: unknown): ParseResult<PersonalDetails> {
   const source = raw as Record<string, unknown>
   const details: PersonalDetails = {}
 
-  for (const key of DETAIL_MONEY_KEYS) {
+  for (const key of DETAIL_KEYS) {
     const value = optionalMoney(source[key])
     if (value === undefined) return { ok: false, error: `${key} must be a number of 0 or more` }
     if (value !== null) details[key] = value
@@ -382,21 +374,121 @@ export interface PersonalFlag {
     | 'filing_status_missing'
     | 'standard_deduction'
     | 'non_itemizer_gifts'
+    | 'expected_document'
+    | 'student_loan_interest'
+    | 'retirement_distribution'
+    | 'ira_contribution'
+    | 'care_provider_id'
+    | 'education_distribution'
+    | 'investment_sales'
+    | 'salt_capped'
   message: string
 }
 
-/** One charity's gifts in a year, reconciled against its own statement. */
+/**
+ * One payee's year in a category: the individual payments, reconciled against
+ * the payee's own statement. Used for charities, student loan servicers and
+ * care providers alike.
+ */
 export interface PayeeYear {
   payee: string
   taxId: string | null
   category: string
-  gifts: PersonalRecord[]
-  giftsTotal: number
+  payments: PersonalRecord[]
+  paymentsTotal: number
   statement: PersonalRecord | null
-  /** The figure to file: the statement when there is one, else the gifts. */
+  /** The figure to file: the statement when there is one, else the payments. */
   deductible: number
-  /** Statement minus gifts; null without a statement. */
+  /** Statement minus payments; null without a statement. */
   difference: number | null
+}
+
+/**
+ * Most state and local tax (income, real estate and personal property
+ * together) that Schedule A allows. $10,000 through 2024; raised to $40,000
+ * for 2025 and $40,400 for 2026 by the One Big Beautiful Bill Act. Half for
+ * married filing separately. The reduction above $500,000 of income is not
+ * modelled.
+ */
+export function saltCap(year: number, status: FilingStatus | null): number {
+  const cap = year <= 2024 ? 10000 : year === 2025 ? 40000 : 40400
+  return status === 'married_separate' ? cap / 2 : cap
+}
+
+/** State and local taxes for the year, as Schedule A lines 5a to 5e add them up. */
+export interface SaltFigures {
+  /** Withheld from wages plus state estimates paid. */
+  stateLocalIncome: number
+  realEstate: number
+  personalProperty: number
+  total: number
+  cap: number
+  /** The total, held to the cap. */
+  deductible: number
+}
+
+/** Most student loan interest that can be deducted in a year. */
+export const STUDENT_LOAN_INTEREST_LIMIT = 2500
+
+/** Figures from tax forms that sit outside the itemized comparison. */
+export interface OtherFigures {
+  wages: number
+  otherIncome: number
+  federalWithheld: number
+  stateWithheld: number
+  localWithheld: number
+  /** Deferrals into an employer plan, from Box 12 of the W-2s. */
+  retirementDeferrals: number
+  studentLoanInterest: number
+  /** The part of that interest the limit allows. */
+  studentLoanDeduction: number
+  iraContributions: number
+  rothContributions: number
+  retirementDistributions: number
+  taxableDistributions: number
+  dependentCarePaid: number
+  federalEstimatedTax: number
+  stateEstimatedTax: number
+  /** Form 1099-Q: money taken out of a 529 plan, and the earnings part of it. */
+  educationDistributions: number
+  educationEarnings: number
+  /** Forms 1099-B and 1099-DA: sale proceeds, before basis. */
+  investmentProceeds: number
+}
+
+/**
+ * The figures worth showing, in return order, skipping whatever is zero. The
+ * page and the export both list these, so the wording lives here.
+ */
+export function otherFigureRows(other: OtherFigures): { label: string; amount: number; note: string }[] {
+  return [
+    { label: 'Wages', amount: other.wages, note: 'Form W-2, Box 1' },
+    { label: 'Other income on 1099 forms', amount: other.otherIncome, note: 'As reported to the IRS' },
+    { label: 'Federal income tax withheld', amount: other.federalWithheld, note: 'Already paid toward the tax for the year' },
+    { label: 'State income tax withheld', amount: other.stateWithheld, note: 'Schedule A, line 5a if you itemize' },
+    { label: 'Local income tax withheld', amount: other.localWithheld, note: 'Schedule A, line 5a if you itemize' },
+    { label: 'Workplace retirement deferrals', amount: other.retirementDeferrals, note: 'W-2 Box 12; already left out of Box 1 wages' },
+    { label: 'Student loan interest paid', amount: other.studentLoanInterest, note: 'Form 1098-E, Box 1' },
+    { label: 'Student loan interest deduction', amount: other.studentLoanDeduction, note: `Limit ${money(STUDENT_LOAN_INTEREST_LIMIT)}; no need to itemize` },
+    { label: 'Traditional IRA contributions', amount: other.iraContributions, note: 'Form 5498; may be deductible' },
+    { label: 'Roth IRA contributions', amount: other.rothContributions, note: 'Not deductible' },
+    { label: 'Retirement distributions', amount: other.retirementDistributions, note: 'Form 1099-R, Box 1' },
+    { label: 'Taxable part of distributions', amount: other.taxableDistributions, note: 'Form 1099-R, Box 2a' },
+    { label: 'Child and dependent care paid', amount: other.dependentCarePaid, note: 'Basis for the care credit' },
+    { label: 'Federal estimated tax paid', amount: other.federalEstimatedTax, note: 'Form 1040-ES payments' },
+    { label: 'State estimated tax paid', amount: other.stateEstimatedTax, note: '' },
+    { label: '529 plan distributions', amount: other.educationDistributions, note: 'Form 1099-Q, Box 1' },
+    { label: 'Earnings in those distributions', amount: other.educationEarnings, note: 'Form 1099-Q, Box 2; taxable unless matched to education costs' },
+    { label: 'Investment and crypto sale proceeds', amount: other.investmentProceeds, note: 'Forms 1099-B and 1099-DA; goes on Form 8949 with the basis' },
+  ].filter((row) => row.amount > 0)
+}
+
+/** One category of tax forms for the year, as the page lists it. */
+export interface FormCategoryYear {
+  category: string
+  label: string
+  /** Everything on file for the year, counted or not, oldest first. */
+  records: PersonalRecord[]
 }
 
 export type InterestSource = 'form_1098' | 'estimate' | 'payments' | 'none'
@@ -422,13 +514,20 @@ export interface PersonalYearReport {
     source: InterestSource
     points: number
   }
+  /** Real estate tax: rows entered here, else what the Form 1098 reports. */
   propertyTax: {
     records: PersonalRecord[]
     total: number
   }
-  /** Paperwork for the year that adds nothing to a total. */
+  salt: SaltFigures
+  /** Tax forms outside Schedule A: wages, student loans, retirement and the rest. */
+  forms: FormCategoryYear[]
+  other: OtherFigures
+  /** Documents known to exist that are not on file yet. */
+  expected: PersonalRecord[]
+  /** Charity and home paperwork for the year that adds nothing to a total. */
   documents: PersonalRecord[]
-  /** Charity + mortgage interest + points + property tax, as recorded here. */
+  /** Charity + mortgage interest + points + state and local taxes up to the cap. */
   itemizedOnFile: number
   standardDeduction: number | null
   nonItemizerGiftLimit: number | null
@@ -447,29 +546,11 @@ export function buildPersonalYearReport(inputs: PersonalYearInputs): PersonalYea
   const { year, records, filingStatus, today } = inputs
   const yearEnded = year < yearOfDateOnly(today)
   const inYear = records.filter((record) => record.tax_year === year).sort(byDate)
-  const counted = inYear.filter((record) => record.counted)
+  const counted = inYear.filter(isCounted)
   const flags: PersonalFlag[] = []
 
   // ---- charity: each organization against its own statement
-  const charityRecords = counted.filter((record) => personalCategory(record.category)?.group === 'charity')
-  const payees = [...groupBy(charityRecords, (record) => `${record.category}|${payeeKey(record.payee)}`).values()]
-    .map((rows): PayeeYear => {
-      const gifts = rows.filter((row) => row.record_type === 'payment')
-      const statement = rows.filter((row) => row.record_type === 'statement').at(-1) ?? null
-      const giftsTotal = total(gifts)
-      return {
-        payee: (statement ?? rows[0]).payee,
-        taxId: rows.find((row) => row.payee_tax_id)?.payee_tax_id ?? null,
-        category: rows[0].category,
-        gifts,
-        giftsTotal,
-        statement,
-        deductible: statement?.amount ?? giftsTotal,
-        difference: statement ? round2((statement.amount ?? 0) - giftsTotal) : null,
-      }
-    })
-    .filter((entry) => entry.gifts.length > 0 || entry.statement)
-    .sort((a, b) => b.deductible - a.deductible || a.payee.localeCompare(b.payee))
+  const payees = reconcileByPayee(counted.filter((record) => groupOf(record) === 'charity'))
 
   for (const entry of payees) flags.push(...charityFlags(entry, year, yearEnded))
 
@@ -486,7 +567,7 @@ export function buildPersonalYearReport(inputs: PersonalYearInputs): PersonalYea
 
   // Loan terms are a standing fact, not a yearly one: take the newest on file.
   const loanRecord = records
-    .filter((record) => record.category === 'mortgage' && record.counted && record.details.loan)
+    .filter((record) => record.category === 'mortgage' && isCounted(record) && record.details.loan)
     .sort(byDate)
     .at(-1) ?? null
   const loan = loanRecord?.details.loan ?? null
@@ -521,15 +602,88 @@ export function buildPersonalYearReport(inputs: PersonalYearInputs): PersonalYea
     })
   }
 
-  // ---- property tax: rows entered here, else what the 1098 reports
-  const propertyTaxRecords = counted.filter((record) => record.category === 'property_tax' && record.record_type !== 'document')
+  // ---- tax forms outside Schedule A
+  const formRecords = counted.filter((record) => groupOf(record) === 'forms')
+  const withForm = (form: string) => formRecords.filter((record) => record.form === form)
+  const detail = (rows: PersonalRecord[], key: DetailKey) => round2(sum(rows, (row) => row.details[key] ?? 0))
+  const reconciled = (category: string) =>
+    round2(sum(reconcileByPayee(formRecords.filter((record) => record.category === category)), (entry) => entry.deductible))
+
+  const studentLoanInterest = reconciled('student_loan')
+  const careProviders = reconcileByPayee(formRecords.filter((record) => record.category === 'dependent_care'))
+  const other: OtherFigures = {
+    wages: total(withForm('W-2')),
+    localWithheld: detail(formRecords, 'local_withheld'),
+    educationDistributions: total(withForm('1099-Q')),
+    educationEarnings: detail(withForm('1099-Q'), 'earnings'),
+    investmentProceeds: total(formRecords.filter((record) => record.category === 'investments' && record.record_type === 'statement')),
+    otherIncome: total(formRecords.filter((record) => record.category === 'other_income' && record.record_type === 'statement')),
+    federalWithheld: detail(formRecords, 'federal_withheld'),
+    stateWithheld: detail(formRecords, 'state_withheld'),
+    retirementDeferrals: detail(formRecords, 'retirement_deferrals'),
+    studentLoanInterest,
+    studentLoanDeduction: Math.min(studentLoanInterest, STUDENT_LOAN_INTEREST_LIMIT),
+    iraContributions: total(withForm('5498')),
+    rothContributions: detail(withForm('5498'), 'roth_contributions'),
+    retirementDistributions: total(withForm('1099-R')),
+    taxableDistributions: detail(withForm('1099-R'), 'taxable_amount'),
+    dependentCarePaid: round2(sum(careProviders, (entry) => entry.deductible)),
+    federalEstimatedTax: total(withForm('1040-ES')),
+    stateEstimatedTax: total(withForm('state-estimate')),
+  }
+  flags.push(...formFlags(other, careProviders, year))
+
+  // ---- state and local taxes: each payee's receipt for the year, else its payments
+  const propertyTaxRecords = formRecords.filter((record) => record.category === 'property_tax' && record.record_type !== 'document')
   const propertyTaxTotal = propertyTaxRecords.length > 0
-    ? total(propertyTaxRecords)
+    ? reconciled('property_tax')
     : (form1098?.details.property_tax ?? 0)
+  const stateLocalIncome = round2(other.stateWithheld + other.localWithheld + other.stateEstimatedTax)
+  const personalProperty = reconciled('personal_property_tax')
+  const saltTotal = round2(stateLocalIncome + propertyTaxTotal + personalProperty)
+  const cap = saltCap(year, filingStatus)
+  const salt: SaltFigures = {
+    stateLocalIncome,
+    realEstate: round2(propertyTaxTotal),
+    personalProperty,
+    total: saltTotal,
+    cap,
+    deductible: Math.min(saltTotal, cap),
+  }
+  if (saltTotal > cap) {
+    flags.push({
+      severity: 'info',
+      code: 'salt_capped',
+      message: `State and local taxes for ${year} come to ${money(saltTotal)}. Schedule A allows ${money(cap)} of that.`,
+    })
+  }
+
+  // ---- documents known to exist but not on file; listed apart from the rest
+  const expected = inYear.filter((record) => record.expected)
+  const onFile = inYear.filter((record) => !record.expected)
+
+  const forms = FORM_CATEGORIES
+    .map((category): FormCategoryYear => ({
+      category: category.key,
+      label: category.label,
+      records: onFile.filter((record) => record.category === category.key),
+    }))
+    .filter((entry) => entry.records.length > 0)
+
+  if (expected.length > 0) {
+    // One line for the lot; where to get each is in the list on the page.
+    const names = expected.map((record) => `${recordKindLabel(record.category, record.record_type, record.form)} from ${record.payee}`)
+    flags.push({
+      severity: yearEnded ? 'action' : 'info',
+      code: 'expected_document',
+      message: `${expected.length} document${plural(expected.length)} for ${year} ${expected.length === 1 ? 'is' : 'are'} still to get: ${names.join('; ')}. Nothing from ${expected.length === 1 ? 'it' : 'them'} is in the totals yet.`,
+    })
+  }
 
   // ---- paperwork and housekeeping
-  const documents = inYear.filter((record) => record.record_type === 'document' || !record.counted)
-  const notCounted = inYear.filter((record) => !record.counted)
+  const documents = onFile.filter((record) =>
+    groupOf(record) !== 'forms' && (record.record_type === 'document' || !record.counted))
+  const notCounted = onFile.filter((record) => !record.counted)
   if (notCounted.length > 0) {
     flags.push({
       severity: 'info',
@@ -548,7 +702,7 @@ export function buildPersonalYearReport(inputs: PersonalYearInputs): PersonalYea
 
   // ---- does any of it change the tax bill?
   const charityTotal = round2(cash + noncash)
-  const itemizedOnFile = round2(charityTotal + interest + points + propertyTaxTotal)
+  const itemizedOnFile = round2(charityTotal + interest + points + salt.deductible)
   const standard = filingStatus ? standardDeduction(year, filingStatus) : null
   const giftLimit = filingStatus ? nonItemizerGiftLimit(year, filingStatus) : null
 
@@ -565,7 +719,7 @@ export function buildPersonalYearReport(inputs: PersonalYearInputs): PersonalYea
       code: 'standard_deduction',
       message: itemizedOnFile > standard
         ? `The items recorded here total ${money(itemizedOnFile)}, more than the ${year} standard deduction of ${money(standard)} (${label}). Itemizing on Schedule A is likely worth it.`
-        : `The items recorded here total ${money(itemizedOnFile)}. The ${year} standard deduction is ${money(standard)} (${label}). Itemizing only pays when all Schedule A deductions together, including state and local taxes, come to more than that; ${money(round2(standard - itemizedOnFile))} more would be needed.`,
+        : `The items recorded here total ${money(itemizedOnFile)}. The ${year} standard deduction is ${money(standard)} (${label}). Itemizing only pays when all Schedule A deductions together come to more than that; ${money(round2(standard - itemizedOnFile))} more would be needed.`,
     })
   }
   if (giftLimit !== null && cash > 0) {
@@ -582,12 +736,93 @@ export function buildPersonalYearReport(inputs: PersonalYearInputs): PersonalYea
     charity: { payees, cash, noncash, total: charityTotal },
     mortgage: { lender, loan, form1098, payments, paymentsInterest, estimatedInterest, interest: round2(interest), source, points },
     propertyTax: { records: propertyTaxRecords, total: round2(propertyTaxTotal) },
+    salt,
+    forms,
+    other,
+    expected,
     documents,
     itemizedOnFile,
     standardDeduction: standard,
     nonItemizerGiftLimit: giftLimit,
     flags: sortFlags(flags),
   }
+}
+
+/**
+ * Group one category group's records by payee and settle each against its
+ * own statement: the statement is the figure to file, the payments are what
+ * it is checked against. Largest first.
+ */
+function reconcileByPayee(records: PersonalRecord[]): PayeeYear[] {
+  return [...groupBy(records, (record) => `${record.category}|${payeeKey(record.payee)}`).values()]
+    .map((rows): PayeeYear => {
+      const payments = rows.filter((row) => row.record_type === 'payment')
+      const statement = rows.filter((row) => row.record_type === 'statement').at(-1) ?? null
+      const paymentsTotal = total(payments)
+      return {
+        payee: (statement ?? rows[0]).payee,
+        taxId: rows.find((row) => row.payee_tax_id)?.payee_tax_id ?? null,
+        category: rows[0].category,
+        payments,
+        paymentsTotal,
+        statement,
+        deductible: statement?.amount ?? paymentsTotal,
+        difference: statement ? round2((statement.amount ?? 0) - paymentsTotal) : null,
+      }
+    })
+    .filter((entry) => entry.payments.length > 0 || entry.statement)
+    .sort((a, b) => b.deductible - a.deductible || a.payee.localeCompare(b.payee))
+}
+
+/** What the tax forms on file mean for the return, said once each. */
+function formFlags(other: OtherFigures, careProviders: PayeeYear[], year: number): PersonalFlag[] {
+  const flags: PersonalFlag[] = []
+
+  if (other.studentLoanInterest > 0) {
+    const capped = other.studentLoanInterest > STUDENT_LOAN_INTEREST_LIMIT
+    flags.push({
+      severity: 'info',
+      code: 'student_loan_interest',
+      message: `Student loan interest of ${money(other.studentLoanInterest)} was paid in ${year}. ${capped ? `The deduction stops at ${money(STUDENT_LOAN_INTEREST_LIMIT)}.` : 'All of it is within the limit.'} It comes off income whether or not you itemize, and phases out at higher incomes.`,
+    })
+  }
+  if (other.retirementDistributions > 0) {
+    flags.push({
+      severity: 'review',
+      code: 'retirement_distribution',
+      message: `Form 1099-R shows ${money(other.retirementDistributions)} taken out of a retirement account in ${year}, ${money(other.taxableDistributions)} of it taxable. A direct rollover is reported but not taxed; check the distribution code in Box 7 before entering it.`,
+    })
+  }
+  if (other.iraContributions > 0) {
+    flags.push({
+      severity: 'info',
+      code: 'ira_contribution',
+      message: `${money(other.iraContributions)} went into a traditional IRA for ${year}. It may be deductible, depending on income and whether a workplace plan covers you. Roth contributions never are.`,
+    })
+  }
+  if (other.educationDistributions > 0) {
+    flags.push({
+      severity: 'review',
+      code: 'education_distribution',
+      message: `Form 1099-Q shows ${money(other.educationDistributions)} taken from a 529 plan in ${year}, ${money(other.educationEarnings)} of it earnings. The earnings are tax-free only when matched to qualified education costs paid in ${year}; student loan payments count, up to $10,000 over a lifetime. Unmatched earnings are income, with a 10% additional tax. Loan interest paid with 529 money cannot also be deducted as student loan interest.`,
+    })
+  }
+  if (other.investmentProceeds > 0) {
+    flags.push({
+      severity: 'review',
+      code: 'investment_sales',
+      message: `Sales of ${money(other.investmentProceeds)} were reported on Form 1099-B or 1099-DA for ${year}. Each sale goes on Form 8949 with its cost basis; a form that leaves the basis blank is taxed on the full proceeds unless you supply it.`,
+    })
+  }
+  const withoutId = careProviders.filter((entry) => !entry.taxId)
+  if (withoutId.length > 0) {
+    flags.push({
+      severity: 'review',
+      code: 'care_provider_id',
+      message: `The child and dependent care credit needs each provider's tax ID. ${withoutId.map((entry) => entry.payee).join(', ')} ${withoutId.length === 1 ? 'has' : 'have'} none recorded.`,
+    })
+  }
+  return flags
 }
 
 function charityFlags(entry: PayeeYear, year: number, yearEnded: boolean): PersonalFlag[] {
@@ -599,18 +834,18 @@ function charityFlags(entry: PayeeYear, year: number, yearEnded: boolean): Perso
       ? {
           severity: 'review',
           code: 'statement_mismatch',
-          message: `${payee}'s ${year} statement shows ${money(statement.amount ?? 0)}; the receipts on file add up to ${money(entry.giftsTotal)}. ${money(difference)} of gifts have no receipt of their own here. The statement covers them and is the figure to file.`,
+          message: `${payee}'s ${year} statement shows ${money(statement.amount ?? 0)}; the receipts on file add up to ${money(entry.paymentsTotal)}. ${money(difference)} of gifts have no receipt of their own here. The statement covers them and is the figure to file.`,
         }
       : {
           severity: 'action',
           code: 'statement_mismatch',
-          message: `${payee}'s ${year} statement shows ${money(statement.amount ?? 0)}, but the receipts on file add up to ${money(entry.giftsTotal)}, ${money(-difference)} more. Check for a duplicate or voided receipt, or ask the charity to correct the statement.`,
+          message: `${payee}'s ${year} statement shows ${money(statement.amount ?? 0)}, but the receipts on file add up to ${money(entry.paymentsTotal)}, ${money(-difference)} more. Check for a duplicate or voided receipt, or ask the charity to correct the statement.`,
         })
   }
 
   // The IRS wants, for any single gift of $250 or more, a written
   // acknowledgment saying whether anything was given in return.
-  const large = entry.gifts.filter((gift) => (gift.amount ?? 0) >= ACKNOWLEDGMENT_THRESHOLD)
+  const large = entry.payments.filter((gift) => (gift.amount ?? 0) >= ACKNOWLEDGMENT_THRESHOLD)
   const covered = statement?.details.no_goods_statement === true
   const uncovered = covered ? [] : large.filter((gift) => gift.details.no_goods_statement !== true)
 
@@ -627,11 +862,11 @@ function charityFlags(entry: PayeeYear, year: number, yearEnded: boolean): Perso
           code: 'acknowledgment_needed',
           message: `${what} so far in ${year} will need a written acknowledgment stating that no goods or services were received. The ${statementName(entry.category)} that arrives in January normally provides it; add it here when it comes.`,
         })
-  } else if (!statement && yearEnded && entry.gifts.length > 0) {
+  } else if (!statement && yearEnded && entry.payments.length > 0) {
     flags.push({
       severity: 'review',
       code: 'statement_missing',
-      message: `No ${year} ${statementName(entry.category)} from ${payee} is on file. The total, ${money(entry.giftsTotal)}, comes from ${entry.gifts.length} individual receipt${plural(entry.gifts.length)}.`,
+      message: `No ${year} ${statementName(entry.category)} from ${payee} is on file. The total, ${money(entry.paymentsTotal)}, comes from ${entry.payments.length} individual receipt${plural(entry.payments.length)}.`,
     })
   }
   return flags
@@ -659,6 +894,11 @@ const byDate = (a: PersonalRecord, b: PersonalRecord) =>
   a.record_date.localeCompare(b.record_date) || a.id - b.id
 
 const payeeKey = (payee: string) => payee.trim().toLowerCase()
+
+/** Counted toward totals: switched on, and actually on file. */
+const isCounted = (record: PersonalRecord) => record.counted && !record.expected
+
+const groupOf = (record: PersonalRecord) => personalCategory(record.category)?.group ?? null
 
 const plural = (count: number) => (count === 1 ? '' : 's')
 

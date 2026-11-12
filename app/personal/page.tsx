@@ -11,6 +11,7 @@ import {
   FILING_STATUSES,
   buildPersonalYearReport,
   filingStatusLabel,
+  otherFigureRows,
   personalYears,
   recordKindLabel,
   statementName,
@@ -36,9 +37,10 @@ const INTEREST_NOTE = {
 } as const
 
 /**
- * Personal deductions: charitable gifts and the home mortgage, by tax year.
+ * Personal tax records by tax year: charitable gifts, the home mortgage, and
+ * the forms the rest of the return is built from (W-2, 1098-E, 1099-R, ...).
  * Deliberately a page of its own. None of this is business activity, and
- * nothing here reaches the invoices, the Summary or the Tax page.
+ * nothing here reaches the invoices or the Summary.
  */
 export default function PersonalPage() {
   const [data, setData] = useState<PersonalResponse | null>(null)
@@ -56,13 +58,13 @@ export default function PersonalPage() {
     setError(null)
     try {
       const res = await fetch('/api/personal')
-      if (!res.ok) throw new Error('Failed to load personal deductions')
+      if (!res.ok) throw new Error('Failed to load personal records')
       const body: PersonalResponse = await res.json()
       setData(body)
       // First load: open on the newest year that has anything in it.
       setYear((current) => current ?? personalYears(body.records, todayDateOnly())[0] ?? null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load personal deductions')
+      setError(err instanceof Error ? err.message : 'Failed to load personal records')
     } finally {
       setLoading(false)
     }
@@ -79,6 +81,7 @@ export default function PersonalPage() {
     () => (year === null ? null : buildPersonalYearReport({ year, records, filingStatus, today })),
     [year, records, filingStatus, today]
   )
+  const otherRows = useMemo(() => (report ? otherFigureRows(report.other) : []), [report])
   const urlById = useMemo(() => new Map(records.map((record) => [record.id, record.url])), [records])
   const payees = useMemo(() => [...new Set(records.map((record) => record.payee))].sort(), [records])
   const awaitingFile = useMemo(() => records.filter((record) => record.filename && !record.storage_path), [records])
@@ -100,7 +103,7 @@ export default function PersonalPage() {
   }
 
   const remove = async (record: PersonalRecord) => {
-    const what = `${recordKindLabel(record.category, record.record_type).toLowerCase()} from ${record.payee} dated ${formatDate(record.record_date)}`
+    const what = `${recordKindLabel(record.category, record.record_type, record.form)} from ${record.payee} dated ${formatDate(record.record_date)}`
     if (!window.confirm(`Delete the ${what}? Its document is deleted too.`)) return
     setBusy(`delete-${record.id}`)
     try {
@@ -212,7 +215,7 @@ export default function PersonalPage() {
         </span>
       ) : (
         <span key="doc" className="text-gray-500 dark:text-gray-400" title={record.filename ?? undefined}>
-          {record.filename ? 'Waiting for file' : 'No document'}
+          {record.filename ? 'Waiting for file' : record.expected ? 'Still to get' : 'No document'}
         </span>
       ),
       <span key="actions" className="inline-flex items-center gap-2">
@@ -242,10 +245,10 @@ export default function PersonalPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Personal deductions</h1>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Personal tax records</h1>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 max-w-2xl">
-                Charitable gifts and the home mortgage, for Schedule A of your own return.
-                Not part of the business: nothing here appears in invoices, the Summary or the Tax page.
+                Charitable gifts, the home mortgage and the forms your own return is built from.
+                Not part of the business: nothing here appears in invoices or the Summary.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -303,7 +306,7 @@ export default function PersonalPage() {
             </div>
           ) : !report ? (
             <Section title="Nothing recorded yet">
-              <Empty>Add a gift receipt, a mortgage statement or the loan paperwork to start a year.</Empty>
+              <Empty>Add a gift receipt, a mortgage statement, a W-2 or any other tax form to start a year.</Empty>
             </Section>
           ) : (
             <div className="space-y-6">
@@ -313,7 +316,7 @@ export default function PersonalPage() {
                 <Stat label="Mortgage interest" value={formatCurrency(report.mortgage.interest)}
                   note={INTEREST_NOTE[report.mortgage.source]} />
                 <Stat label="Recorded here in total" value={formatCurrency(report.itemizedOnFile)}
-                  note="Gifts, interest, points and property tax" />
+                  note="Gifts, mortgage interest, state and local taxes" />
                 <Stat label="Standard deduction" value={report.standardDeduction === null ? '—' : formatCurrency(report.standardDeduction)}
                   note={report.filingStatus ? filingStatusLabel(report.filingStatus) : 'Choose a filing status below'} />
               </div>
@@ -332,6 +335,33 @@ export default function PersonalPage() {
                 </label>
                 <FlagGroups flags={report.flags} />
               </Section>
+
+              {report.expected.length > 0 && (
+                <Section title="Still to get">
+                  <Table
+                    head={['What', 'From', 'Where to get it', 'Document', '']}
+                    rows={report.expected.map((record) => [
+                      recordKindLabel(record.category, record.record_type, record.form),
+                      record.payee,
+                      <span key="n" className="text-gray-500 dark:text-gray-400">{record.notes ?? record.description ?? ''}</span>,
+                      ...tail(record),
+                    ])}
+                  />
+                </Section>
+              )}
+
+              {otherRows.length > 0 && (
+                <Section title="Also on the return">
+                  <dl className="space-y-2 text-sm max-w-2xl">
+                    {otherRows.map((row) => (
+                      <div key={row.label}>
+                        <Row k={row.label} v={formatCurrency(row.amount)} />
+                        {row.note && <p className="text-xs text-gray-500 dark:text-gray-400">{row.note}</p>}
+                      </div>
+                    ))}
+                  </dl>
+                </Section>
+              )}
 
               <Section title="Charitable gifts">
                 {report.charity.payees.length === 0 ? (
@@ -406,6 +436,26 @@ export default function PersonalPage() {
                 )}
               </Section>
 
+              {report.forms.map((entry) => (
+                <Section key={entry.category} title={entry.label}>
+                  <Table
+                    head={['Dated', 'What', 'From', 'Amount', 'Note', 'Document', '']}
+                    numeric={[3]}
+                    rows={entry.records.map((record) => [
+                      <Day key="d" v={record.record_date} />,
+                      <span key="w">
+                        {recordKindLabel(record.category, record.record_type, record.form)}
+                        {!record.counted && <Badge tone="muted">Not counted</Badge>}
+                      </span>,
+                      record.payee,
+                      <Figure key="a" v={record.amount} />,
+                      <span key="n" className="text-gray-500 dark:text-gray-400">{record.description ?? record.notes ?? ''}</span>,
+                      ...tail(record),
+                    ])}
+                  />
+                </Section>
+              ))}
+
               {report.documents.length > 0 && (
                 <Section title="Other paperwork">
                   <Table
@@ -413,7 +463,7 @@ export default function PersonalPage() {
                     rows={report.documents.map((doc) => [
                       <Day key="d" v={doc.record_date} />,
                       <span key="w">
-                        {doc.description ?? recordKindLabel(doc.category, doc.record_type)}
+                        {doc.description ?? recordKindLabel(doc.category, doc.record_type, doc.form)}
                         {!doc.counted && <Badge tone="muted">Not counted</Badge>}
                       </span>,
                       doc.payee,
@@ -467,7 +517,7 @@ function CharityBlock({ entry, tail, onAddStatement }: {
         head={['Date', 'Receipt #', 'Paid by', 'Amount', 'Document', '']}
         numeric={[3]}
         rows={[
-          ...entry.gifts.map((gift) => [
+          ...entry.payments.map((gift) => [
             <Day key="d" v={gift.record_date} />,
             gift.reference ?? '',
             gift.payment_method ?? '',
@@ -487,14 +537,14 @@ function CharityBlock({ entry, tail, onAddStatement }: {
             To file
             {difference !== null && Math.abs(difference) >= 0.01 && (
               <Badge tone={difference > 0 ? 'warn' : 'bad'}>
-                Receipts total {formatCurrency(entry.giftsTotal)}
+                Receipts total {formatCurrency(entry.paymentsTotal)}
               </Badge>
             )}
           </span>,
           '', '',
           <Money key="t" v={entry.deductible} strong />,
           <span key="b" className="text-gray-500 dark:text-gray-400">
-            {statement ? 'From the annual statement' : `${entry.gifts.length} receipt${entry.gifts.length === 1 ? '' : 's'}`}
+            {statement ? 'From the annual statement' : `${entry.payments.length} receipt${entry.payments.length === 1 ? '' : 's'}`}
           </span>,
           '',
         ]}

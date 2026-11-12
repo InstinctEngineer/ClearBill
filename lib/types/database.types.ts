@@ -173,6 +173,7 @@ export interface Database {
           id: number
           category: string
           record_type: 'payment' | 'statement' | 'document'
+          form: string | null
           payee: string
           payee_tax_id: string | null
           record_date: string
@@ -183,6 +184,7 @@ export interface Database {
           description: string | null
           details: Record<string, unknown>
           counted: boolean
+          expected: boolean
           notes: string | null
           filename: string | null
           storage_path: string | null
@@ -194,6 +196,7 @@ export interface Database {
           id?: number
           category: string
           record_type?: 'payment' | 'statement' | 'document'
+          form?: string | null
           payee: string
           payee_tax_id?: string | null
           record_date: string
@@ -204,6 +207,7 @@ export interface Database {
           description?: string | null
           details?: Record<string, unknown>
           counted?: boolean
+          expected?: boolean
           notes?: string | null
           filename?: string | null
           storage_path?: string | null
@@ -212,6 +216,7 @@ export interface Database {
         Update: {
           category?: string
           record_type?: 'payment' | 'statement' | 'document'
+          form?: string | null
           payee?: string
           payee_tax_id?: string | null
           record_date?: string
@@ -222,6 +227,7 @@ export interface Database {
           description?: string | null
           details?: Record<string, unknown>
           counted?: boolean
+          expected?: boolean
           notes?: string | null
           filename?: string | null
           storage_path?: string | null

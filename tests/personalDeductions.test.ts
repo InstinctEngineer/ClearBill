@@ -1,7 +1,7 @@
 /**
- * Tests for the personal deductions ledger, run against the real records
- * (gifts to University of the Nations 2021-2026 and the home mortgage) so the
- * figures below are the ones that will be filed.
+ * Tests for the personal tax ledger, run against the real records (gifts to
+ * University of the Nations 2021-2026, the home mortgage, the 2025 tax forms)
+ * so the figures below are the ones that will be filed.
  * Run with: npm test
  */
 import { test } from 'node:test'
@@ -13,8 +13,11 @@ import {
   estimatedInterestForYear,
   monthlyPayment,
   nonItemizerGiftLimit,
+  otherFigureRows,
   parsePersonalRecord,
   personalYears,
+  recordKindLabel,
+  saltCap,
   standardDeduction,
   type LoanTerms,
   type PersonalDetails,
@@ -32,6 +35,7 @@ function record(partial: Partial<PersonalRecord> & Pick<PersonalRecord, 'categor
   return {
     id,
     record_type: 'payment',
+    form: null,
     payee: partial.category === 'mortgage' ? LENDER : UOFN,
     payee_tax_id: null,
     tax_year: Number(partial.record_date.slice(0, 4)),
@@ -41,6 +45,7 @@ function record(partial: Partial<PersonalRecord> & Pick<PersonalRecord, 'categor
     description: null,
     details: {},
     counted: true,
+    expected: false,
     notes: null,
     filename: `file-${id}.pdf`,
     storage_path: `personal/file-${id}.pdf`,
@@ -117,7 +122,7 @@ test('a year with a matching statement files the statement figure with nothing t
     const report = reportFor(year)
     assert.equal(report.charity.total, total)
     assert.equal(report.charity.payees.length, 1)
-    assert.equal(report.charity.payees[0].gifts.length, count)
+    assert.equal(report.charity.payees[0].payments.length, count)
     assert.equal(report.charity.payees[0].difference, 0)
     // The only thing standing between this year and filing is the mortgage's 1098.
     assert.deepEqual(codes(report, 'action'), ['form_1098_missing'])
@@ -129,7 +134,7 @@ test('a year with a matching statement files the statement figure with nothing t
 test('the statement wins when a gift has no receipt of its own', () => {
   const y2021 = reportFor(2021)
   assert.equal(y2021.charity.total, 2665)
-  assert.equal(y2021.charity.payees[0].giftsTotal, 2365)
+  assert.equal(y2021.charity.payees[0].paymentsTotal, 2365)
   assert.equal(y2021.charity.payees[0].difference, 300)
 
   const y2022 = reportFor(2022)
@@ -144,7 +149,7 @@ test('the statement wins when a gift has no receipt of its own', () => {
 test('a voided receipt is kept but never counted', () => {
   const report = reportFor(2025)
   assert.equal(report.charity.total, 3679.08)
-  assert.equal(report.charity.payees[0].gifts.length, 12)
+  assert.equal(report.charity.payees[0].payments.length, 12)
   assert.equal(report.charity.payees[0].difference, 0)
   assert.equal(report.documents.filter((doc) => !doc.counted).length, 1)
   assert.ok(codes(report).includes('not_counted'))
@@ -371,12 +376,180 @@ test('the package names every document distinctly and separates the two ledgers'
 test('the package summary carries the figures and says when interest is an estimate', () => {
   const files = buildPersonalPackageFiles(reportFor(2025))
   assert.deepEqual(files.map((file) => file.name), [
-    '2025-personal-summary.csv', '2025-charitable-gifts.csv', '2025-mortgage.csv', '2025-READ-ME-FIRST.txt',
+    '2025-personal-summary.csv', '2025-charitable-gifts.csv', '2025-mortgage.csv', '2025-tax-forms.csv', '2025-READ-ME-FIRST.txt',
   ])
   const summary = files[0].content
   assert.match(summary, /11,Gifts to charity by cash or check,3679\.08/)
   assert.match(summary, /8a,Home mortgage interest,4400\.32,ESTIMATE/)
   assert.match(summary, /Standard deduction \(Married filing jointly\),31500\.00/)
   assert.match(files[1].content, /Annual statement,2026-01-28,3679\.08/)
-  assert.match(files[3].content, /Before filing:\r\n {2}- No Form 1098 for 2025/)
+  assert.match(files[4].content, /Before filing:\r\n {2}- No Form 1098 for 2025/)
+})
+
+// ------------------------------------------------------------ tax forms
+
+// The 2025 forms found in the mailbox, with the figures printed on them.
+const EMPLOYER = 'Magnum Management'
+const forms2025: PersonalRecord[] = [
+  record({
+    category: 'wages', record_type: 'statement', form: 'W-2', payee: EMPLOYER, record_date: '2026-01-31', tax_year: 2025,
+    amount: 65145.38, details: { federal_withheld: 6026.44, state_withheld: 2172, local_withheld: 651.41, retirement_deferrals: 5744.62 },
+  }),
+  record({
+    category: 'other_income', record_type: 'statement', form: '1099-NEC', payee: 'E S and D Services', record_date: '2026-01-31', tax_year: 2025,
+    amount: 3597.5,
+  }),
+  record({
+    category: 'education', record_type: 'statement', form: '1099-Q', payee: 'Iowa Educational Savings Plan Trust', record_date: '2026-01-31', tax_year: 2025,
+    amount: 6723.56, details: { earnings: 1917.1, basis: 4806.46 },
+  }),
+  record({ category: 'personal_property_tax', payee: 'Jackson County, MO', record_date: '2025-12-29', amount: 250 }),
+]
+const with2025Forms = [...records, ...forms2025]
+
+test('a W-2, a 1099-NEC and a 1099-Q each land on their own line', () => {
+  const { other, forms } = reportFor(2025, 'married_joint', with2025Forms)
+  assert.equal(other.wages, 65145.38)
+  assert.equal(other.otherIncome, 3597.5)
+  assert.equal(other.federalWithheld, 6026.44)
+  assert.equal(other.stateWithheld, 2172)
+  assert.equal(other.localWithheld, 651.41)
+  assert.equal(other.retirementDeferrals, 5744.62)
+  assert.equal(other.educationDistributions, 6723.56)
+  assert.equal(other.educationEarnings, 1917.1)
+  assert.deepEqual(forms.map((entry) => entry.category), ['personal_property_tax', 'wages', 'other_income', 'education'])
+  // Zero figures stay off the page.
+  const labels = otherFigureRows(other).map((row) => row.label)
+  assert.ok(labels.includes('Wages') && labels.includes('529 plan distributions'))
+  assert.ok(!labels.includes('Retirement distributions'))
+})
+
+test('state and local taxes join the itemizing comparison, up to the cap', () => {
+  const report = reportFor(2025, 'married_joint', with2025Forms)
+  assert.deepEqual(report.salt, {
+    stateLocalIncome: 2823.41, realEstate: 0, personalProperty: 250, total: 3073.41, cap: 40000, deductible: 3073.41,
+  })
+  // gifts 3,679.08 + estimated interest 4,400.32 + taxes 3,073.41
+  assert.equal(report.itemizedOnFile, 11152.81)
+  assert.ok(report.itemizedOnFile < report.standardDeduction!)
+
+  assert.equal(saltCap(2024, 'married_joint'), 10000)
+  assert.equal(saltCap(2025, 'married_separate'), 20000)
+  assert.equal(saltCap(2026, null), 40400)
+  const big = [...with2025Forms, record({ category: 'property_tax', payee: 'Jackson County, MO', record_date: '2024-12-20', amount: 12500 })]
+  const capped = reportFor(2024, 'married_joint', big)
+  assert.equal(capped.salt.deductible, 10000)
+  assert.ok(codes(capped).includes('salt_capped'))
+})
+
+test('a paid receipt for the year replaces the payments it covers instead of doubling them', () => {
+  const rows = [
+    record({ category: 'property_tax', payee: 'Jackson County', record_date: '2025-06-30', amount: 900 }),
+    record({ category: 'property_tax', payee: 'Jackson County', record_date: '2025-12-30', amount: 900 }),
+    record({ category: 'property_tax', record_type: 'statement', form: 'tax-bill', payee: 'Jackson County', record_date: '2025-12-31', amount: 1800 }),
+  ]
+  assert.equal(reportFor(2025, 'married_joint', rows).propertyTax.total, 1800)
+})
+
+test('a 529 distribution is flagged for matching against education costs', () => {
+  const flag = reportFor(2025, 'married_joint', with2025Forms).flags.find((entry) => entry.code === 'education_distribution')
+  assert.equal(flag?.severity, 'review')
+  assert.match(flag!.message, /\$6,723\.56 taken from a 529 plan in 2025, \$1,917\.10 of it earnings/)
+})
+
+test('student loan interest is deductible up to the limit', () => {
+  const loan = (amount: number) => [record({
+    category: 'student_loan', record_type: 'statement', form: '1098-E', payee: 'Aidvantage', record_date: '2026-01-15', tax_year: 2025, amount,
+  })]
+  const small = reportFor(2025, 'married_joint', loan(412.6))
+  assert.equal(small.other.studentLoanDeduction, 412.6)
+  assert.match(small.flags.find((flag) => flag.code === 'student_loan_interest')!.message, /within the limit/)
+  const large = reportFor(2025, 'married_joint', loan(3100))
+  assert.equal(large.other.studentLoanInterest, 3100)
+  assert.equal(large.other.studentLoanDeduction, 2500)
+})
+
+test('a retirement distribution and a care provider with no tax ID are both raised', () => {
+  const rows = [
+    record({
+      category: 'retirement', record_type: 'statement', form: '1099-R', payee: 'Fidelity', record_date: '2027-01-31', tax_year: 2026,
+      amount: 6900, details: { taxable_amount: 0, federal_withheld: 0 },
+    }),
+    record({ category: 'dependent_care', payee: 'Little Sprouts', record_date: '2026-03-01', amount: 800 }),
+    record({
+      category: 'investments', record_type: 'statement', form: '1099-DA', payee: 'Coinbase', record_date: '2027-02-15', tax_year: 2026,
+      amount: 1200,
+    }),
+  ]
+  const report = reportFor(2026, 'married_joint', rows)
+  assert.equal(report.other.retirementDistributions, 6900)
+  assert.equal(report.other.dependentCarePaid, 800)
+  assert.equal(report.other.investmentProceeds, 1200)
+  // Proceeds are not income until the basis comes off.
+  assert.equal(report.other.otherIncome, 0)
+  for (const code of ['retirement_distribution', 'care_provider_id', 'investment_sales'] as const) assert.ok(codes(report, 'review').includes(code), code)
+})
+
+test('a document still to get is listed, never counted, and blocks filing once the year is over', () => {
+  const expected = record({
+    category: 'student_loan', record_type: 'statement', form: '1098-E', payee: 'Aidvantage', record_date: '2026-01-15', tax_year: 2025,
+    amount: 500, expected: true, filename: null, storage_path: null, notes: 'Online at Aidvantage.',
+  })
+  const report = reportFor(2025, 'married_joint', [...with2025Forms, expected])
+  assert.deepEqual(report.expected.map((row) => row.id), [expected.id])
+  assert.equal(report.other.studentLoanInterest, 0)
+  assert.ok(!report.forms.some((entry) => entry.category === 'student_loan'))
+  const flag = report.flags.find((entry) => entry.code === 'expected_document')
+  assert.equal(flag?.severity, 'action')
+  assert.match(flag!.message, /1 document for 2025 is still to get: Form 1098-E from Aidvantage/)
+  // It has no file by definition, so it is not also nagged about as a missing file.
+  assert.ok(!codes(report).includes('missing_file'))
+  // The same gap in the year still running is only a note.
+  const running = reportFor(2026, 'married_joint', [{ ...expected, tax_year: 2026 }])
+  assert.equal(running.flags.find((entry) => entry.code === 'expected_document')?.severity, 'info')
+})
+
+test('record input: a form must be one its category takes, and a statement still to get needs no amount', () => {
+  const base = { payee: 'Aidvantage', record_date: '2026-01-15', tax_year: 2025 }
+  const wrong = parsePersonalRecord({ ...base, category: 'student_loan', record_type: 'statement', form: 'W-2', amount: 10 })
+  assert.equal(wrong.ok, false)
+  assert.match(wrong.ok ? '' : wrong.error, /form W-2 is not one that student_loan takes/)
+
+  const pending = parsePersonalRecord({ ...base, category: 'student_loan', record_type: 'statement', form: '1098-E', expected: true })
+  assert.ok(pending.ok)
+  assert.equal(pending.value.amount, null)
+  assert.equal(pending.value.expected, true)
+
+  const w2 = parsePersonalRecord({
+    ...base, category: 'wages', record_type: 'statement', form: 'W-2', amount: '65,145.38',
+    details: { federal_withheld: '6026.44', local_withheld: 651.41 },
+  })
+  assert.ok(w2.ok)
+  assert.deepEqual(w2.value.details, { federal_withheld: 6026.44, local_withheld: 651.41 })
+  assert.equal(recordKindLabel('wages', 'statement', 'W-2'), 'Form W-2')
+  assert.equal(recordKindLabel('education', 'statement', '1099-Q'), 'Form 1099-Q, 529 plan distribution')
+})
+
+test('the package lists the tax forms, what is still to get, and files each under its category', () => {
+  const expected = record({
+    category: 'retirement', record_type: 'statement', form: '5498', payee: 'Vanguard', record_date: '2026-05-08', tax_year: 2025,
+    expected: true, filename: null, storage_path: null,
+  })
+  const all = [...with2025Forms, expected]
+  const files = buildPersonalPackageFiles(reportFor(2025, 'married_joint', all))
+  const formsCsv = files[3].content
+  assert.match(formsCsv, /Wages,Form W-2,Magnum Management,2026-01-31,65145\.38/)
+  assert.match(formsCsv, /Retirement accounts,"Form 5498, IRA contributions",Vanguard,2026-05-08,,.*STILL TO GET/)
+  // Only the figures some form carries get a column.
+  assert.match(formsCsv.split('\r\n')[0], /Federal income tax withheld/)
+  assert.doesNotMatch(formsCsv.split('\r\n')[0], /Escrow/)
+  assert.match(files[0].content, /5a,State and local income taxes,2823\.41/)
+  assert.match(files[0].content, /5c,Personal property taxes,250\.00/)
+  assert.match(files[0].content, /,Wages,65145\.38,"Form W-2, Box 1"/)
+  assert.match(files[4].content, /From other tax forms:\r\n {2}Wages: \$65145\.38/)
+
+  const names = [...documentZipNames(recordsWithFiles(all, 2025)).values()]
+  assert.ok(names.some((name) => /^documents\/wages\/2026-01-31_W-2_/.test(name)))
+  assert.ok(names.some((name) => /^documents\/education\/2026-01-31_1099-Q_/.test(name)))
+  assert.ok(names.some((name) => /^documents\/personal-property-tax\/2025-12-29_receipt_/.test(name)))
 })

@@ -1,11 +1,15 @@
 /**
- * Turn a year of personal deductions into the files a preparer can use, and
+ * Turn a year of personal tax records into the files a preparer can use, and
  * decide what each stored document is called inside the ZIP. Pure, so it is
  * testable; the page fetches the documents and bundles them.
  */
 import {
+  DETAIL_FIELDS,
+  DETAIL_KEYS,
   filingStatusLabel,
+  otherFigureRows,
   personalCategory,
+  recordKindLabel,
   statementName,
   type PersonalRecord,
   type PersonalYearReport,
@@ -28,6 +32,7 @@ export function buildPersonalPackageFiles(report: PersonalYearReport): TaxPackag
     { name: `${y}-personal-summary.csv`, content: summaryCsv(report) },
     { name: `${y}-charitable-gifts.csv`, content: giftsCsv(report) },
     { name: `${y}-mortgage.csv`, content: mortgageCsv(report) },
+    { name: `${y}-tax-forms.csv`, content: formsCsv(report) },
     { name: `${y}-READ-ME-FIRST.txt`, content: readMe(report) },
   ]
 }
@@ -39,8 +44,11 @@ function summaryCsv(r: PersonalYearReport): string {
     ['12', 'Gifts to charity other than cash', money(r.charity.noncash), ''],
     ['8a', 'Home mortgage interest', money(r.mortgage.interest), INTEREST_SOURCE[r.mortgage.source]],
     ['8c', 'Points', money(r.mortgage.points), r.mortgage.form1098 ? 'Form 1098, Box 6' : ''],
-    ['5b', 'Real estate taxes', money(r.propertyTax.total), ''],
-    ['', 'Total recorded here', money(r.itemizedOnFile), 'Excludes state income tax and anything not tracked in ClearBill'],
+    ['5a', 'State and local income taxes', money(r.salt.stateLocalIncome), 'Withheld on Form W-2 plus state estimates paid'],
+    ['5b', 'Real estate taxes', money(r.salt.realEstate), ''],
+    ['5c', 'Personal property taxes', money(r.salt.personalProperty), ''],
+    ['5e', 'State and local taxes allowed', money(r.salt.deductible), `Limit ${money(r.salt.cap)}`],
+    ['', 'Total recorded here', money(r.itemizedOnFile), 'Lines 5e, 8a, 8c, 11 and 12; excludes anything not tracked in ClearBill'],
   ]
   if (r.filingStatus && r.standardDeduction !== null) {
     lines.push(['', `Standard deduction (${filingStatusLabel(r.filingStatus)})`, money(r.standardDeduction), 'Itemize only if all Schedule A deductions exceed this'])
@@ -48,16 +56,45 @@ function summaryCsv(r: PersonalYearReport): string {
   if (r.nonItemizerGiftLimit !== null) {
     lines.push(['', 'Cash gifts deductible without itemizing', money(Math.min(r.charity.cash, r.nonItemizerGiftLimit)), `Limit ${money(r.nonItemizerGiftLimit)}`])
   }
+  for (const row of otherFigureRows(r.other)) {
+    lines.push(['', row.label, money(row.amount), row.note])
+  }
+  return csvFile(lines)
+}
+
+/** Every tax form and related record for the year, with whatever figures it carries. */
+function formsCsv(r: PersonalYearReport): string {
+  const records = [
+    ...r.forms.flatMap((entry) => entry.records.map((record) => ({ label: entry.label, record }))),
+    ...r.expected.map((record) => ({ label: personalCategory(record.category)?.label ?? record.category, record })),
+  ]
+  // Only the detail columns some record actually uses, so the sheet stays narrow.
+  const used = DETAIL_KEYS.filter((key) => records.some(({ record }) => record.details[key] !== undefined))
+  const lines: string[][] = [
+    ['Category', 'What', 'From', 'Date', 'Amount', ...used.map((key) => DETAIL_FIELDS[key]), 'Status', 'Note'],
+  ]
+  for (const { label, record } of records) {
+    lines.push([
+      label,
+      recordKindLabel(record.category, record.record_type, record.form),
+      record.payee,
+      record.record_date,
+      money(record.amount),
+      ...used.map((key) => money(record.details[key])),
+      record.expected ? 'STILL TO GET' : record.counted ? 'On file' : 'Not counted',
+      record.description ?? record.notes ?? '',
+    ])
+  }
   return csvFile(lines)
 }
 
 function giftsCsv(r: PersonalYearReport): string {
   const lines: string[][] = [['Organization', 'EIN', 'Record', 'Date', 'Amount', 'Receipt #', 'Paid by', 'Note']]
   for (const entry of r.charity.payees) {
-    for (const gift of entry.gifts) {
+    for (const gift of entry.payments) {
       lines.push([entry.payee, entry.taxId ?? '', 'Gift', gift.record_date, money(gift.amount), gift.reference ?? '', gift.payment_method ?? '', gift.description ?? ''])
     }
-    lines.push([entry.payee, entry.taxId ?? '', 'Receipts total', '', money(entry.giftsTotal), '', '', `${entry.gifts.length} receipts`])
+    lines.push([entry.payee, entry.taxId ?? '', 'Receipts total', '', money(entry.paymentsTotal), '', '', `${entry.payments.length} receipts`])
     if (entry.statement) {
       lines.push([entry.payee, entry.taxId ?? '', 'Annual statement', entry.statement.record_date, money(entry.statement.amount), '', '', 'The figure to file'])
     }
@@ -85,16 +122,20 @@ function mortgageCsv(r: PersonalYearReport): string {
 }
 
 function readMe(r: PersonalYearReport): string {
-  const lines = [
-    `Personal deductions for ${r.year}`,
+  const lines: string[] = [
+    `Personal tax records for ${r.year}`,
     'These are personal records. None of this is business income or expense.',
     '',
     `Charitable gifts:        $${money(r.charity.total)}`,
     `Home mortgage interest:  $${money(r.mortgage.interest)}${r.mortgage.source === 'form_1098' ? '' : `  (${INTEREST_SOURCE[r.mortgage.source] || 'nothing on file'})`}`,
-    `Real estate taxes:       $${money(r.propertyTax.total)}`,
+    `State and local taxes:   $${money(r.salt.deductible)}`,
     `Total recorded here:     $${money(r.itemizedOnFile)}`,
     '',
   ]
+  const others = otherFigureRows(r.other)
+  if (others.length > 0) {
+    lines.push('From other tax forms:', ...others.map((row) => `  ${row.label}: $${money(row.amount)}`), '')
+  }
   for (const [severity, heading] of [['action', 'Before filing'], ['review', 'Worth checking'], ['info', 'For reference']] as const) {
     const flags = r.flags.filter((flag) => flag.severity === severity)
     if (flags.length === 0) continue
@@ -122,12 +163,15 @@ export function recordsWithFiles<T extends PersonalRecord>(records: T[], year: n
  */
 export function documentZipNames(records: PersonalRecord[]): Map<number, string> {
   const bases = records.map((record) => {
-    const folder = personalCategory(record.category)?.group === 'charity' ? 'charity' : 'home'
-    const kind = record.record_type === 'statement'
-      ? statementName(record.category).replace(/\s+/g, '-')
-      : record.record_type === 'document' ? 'document' : 'receipt'
+    const group = personalCategory(record.category)?.group
+    const folder = group === 'charity' || group === 'home' ? group : record.category.replace(/_/g, '-')
+    const kind = record.form && group === 'forms'
+      ? record.form
+      : record.record_type === 'statement'
+        ? statementName(record.category).replace(/\s+/g, '-')
+        : record.record_type === 'document' ? 'document' : 'receipt'
     const original = safeFileName(record.filename ?? `record-${record.id}`)
-    return `documents/${folder}/${record.record_date}_${record.counted ? kind : 'not-counted'}_${original}`
+    return `documents/${folder}/${record.record_date}_${safeFileName(record.counted ? kind : 'not-counted')}_${original}`
   })
   const unique = uniqueFileNames(bases)
   return new Map(records.map((record, index) => [record.id, unique[index]]))

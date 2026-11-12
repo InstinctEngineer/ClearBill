@@ -262,9 +262,10 @@ See [supabase/migrations/001_initial_schema.sql](./supabase/migrations/001_initi
 - `GET /api/receipts/[id]` - Get single receipt with signed URL
 - `DELETE /api/receipts/[id]` - Delete receipt file and metadata
 
-### Personal deductions
+### Personal tax records
+Charitable gifts, the home mortgage and personal tax forms (W-2, 1098-E, 1099-R, 5498, 1099-Q and others). The categories and forms the app accepts are listed in `lib/personalKinds.ts`; adding one is a line there.
 - `GET /api/personal` - All personal records with signed URLs, and filing status by year
-- `POST /api/personal` - Add a gift, payment, statement or document
+- `POST /api/personal` - Add a gift, payment, tax form or document, or note one still to get (`expected`)
 - `PATCH /api/personal/[id]` - Change a record
 - `DELETE /api/personal/[id]` - Delete a record and its document
 - `POST /api/personal/[id]/file` - Attach or replace a record's document
